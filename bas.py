@@ -41,6 +41,56 @@ def fun_right (expr1, expr2):
     return expr1 [-expr2:]
 # end def fun_right
 
+#def _fmt_float (v, fmt = '%8f'):
+def _fmt_float (v, fmt = '{:#.8g}'):
+    sign = ''
+    if fmt.startswith ('{'):
+        x = fmt.format (v).strip ()
+    else:
+        x = (fmt % v).strip ()
+    if x.startswith ('-'):
+        sign = '-'
+        x = x.lstrip ('-')
+    x = x.lstrip ('0')
+    x = sign + x
+    if '.' in x and not 'e' in x and not 'E' in x:
+        x = x.rstrip ('0')
+        x = x.rstrip ('.')
+    return x
+# end def _fmt_float
+
+def format_float (v):
+    """ Try to get float formatting right
+        (or at least matching to pcbasic)
+    >>> format_float (0.0)
+    ' 0 '
+    >>> format_float (0.001)
+    ' .001 '
+    >>> format_float (-0.001)
+    '-.001 '
+    >>> format_float (2.141428111)
+    ' 2.141428 '
+    >>> format_float (4.99262212345e-03)
+    ' 4.992622E-03 '
+    >>> format_float (42.82857111)
+    ' 42.82857 '
+    >>> format_float (-.9036958111)
+    '-.9036958 '
+    """
+    if v == 0.0:
+        return ' 0 '
+    e = int (np.floor (np.log10 (np.abs (v))))
+    x = _fmt_float (v)
+    f = '{:#.7g}'
+    if abs (e) > 7 or len (x) >= 7 and abs (e) > 1:
+        f = '%12E'
+    v = _fmt_float (v, fmt = f)
+    if not v.startswith ('-'):
+        v = ' ' + v
+    v = v + ' '
+    return v
+# end def format_float
+
 class Interpreter:
     print_special = \
         { ',' : ('++,++', 'COMMA')
@@ -313,6 +363,46 @@ class Interpreter:
             self.files [fhandle] = None
     # end def cmd_open_read
 
+    def _format_using (self, v):
+        f   = []
+        s   = 0
+        bc  = 0
+        ac  = 0
+        fmt = []
+        for x in v:
+            if x == '#':
+                if s == 0:
+                    bc += 1
+                elif s == 1:
+                    ac += 1
+                else:
+                    assert 0
+            elif x == '.':
+                assert s == 0
+                s = 1
+            elif x == '^':
+                if ac or bc:
+                    ln = ac + bc + s
+                    f.append ('%%%s.%sf' % (ln, ac))
+                    fmt.append (''.join (f))
+                    f = []
+                ac = bc = 0
+            else:
+                if ac or bc:
+                    ln = ac + bc + s
+                    f.append ('%%%s.%sf' % (ln, ac))
+                    fmt.append (''.join (f))
+                    f = []
+                ac = bc = 0
+                f.append (x)
+        if ac or bc:
+            ln = ac + bc + s
+            f.append ('%%%s.%sf' % (ln, ac))
+            fmt.append (''.join (f))
+            f = []
+        return fmt
+    # end def _format_using
+
     def cmd_print (self, printlist, fhandle = None, using = False):
         file = sys.stdout
         if fhandle is not None:
@@ -324,42 +414,7 @@ class Interpreter:
             if callable (v):
                 v = v ()
             if n == 0 and using:
-                f   = []
-                s   = 0
-                bc  = 0
-                ac  = 0
-                fmt = []
-                for x in v:
-                    if x == '#':
-                        if s == 0:
-                            bc += 1
-                        elif s == 1:
-                            ac += 1
-                        else:
-                            assert 0
-                    elif x == '.':
-                        assert s == 0
-                        s = 1
-                    elif x == '^':
-                        if ac or bc:
-                            ln = ac + bc + s
-                            f.append ('%%%s.%sf' % (ln, ac))
-                            fmt.append (''.join (f))
-                            f = []
-                        ac = bc = 0
-                    else:
-                        if ac or bc:
-                            ln = ac + bc + s
-                            f.append ('%%%s.%sf' % (ln, ac))
-                            fmt.append (''.join (f))
-                            f = []
-                        ac = bc = 0
-                        f.append (x)
-                if ac or bc:
-                    ln = ac + bc + s
-                    f.append ('%%%s.%sf' % (ln, ac))
-                    fmt.append (''.join (f))
-                    f = []
+                fmt = self._format_using (v)
                 continue
             c = self.special_by_code.get (v, None)
             if c is None:
@@ -367,15 +422,7 @@ class Interpreter:
                     f = fmt.pop (0)
                     v = f % v
                 elif isinstance (v, float):
-                    v = '%8.7g' % v
-                    v = v.lstrip ()
-                    if v != '0':
-                        v = v.lstrip ('0')
-                    v = ' ' + v
-                    if '.' in v and not 'e' in v:
-                        v = v.rstrip ('0')
-                        v = v.rstrip ('.')
-                    v = v + ' '
+                    v = format_float (v)
                 v = str (v)
                 self.col += len (v)
                 l.append (v)
