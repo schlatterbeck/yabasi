@@ -119,7 +119,7 @@ class Interpreter:
         self.running = True
         l = self.lineno = self.first
         while self.running and l:
-            if self.lineno == self.break_lineno:
+            if self.lineno == self.break_lineno or self.break_lineno == 'all':
                 import pdb; pdb.set_trace ()
             self.next = self.nextline.get (l)
             #print ('lineno: %d' % l)
@@ -397,7 +397,7 @@ class Interpreter:
 
     def cmd_read (self, vars):
         for var in vars:
-            result = self.data.pop ()
+            result = self.data.pop (0)
             self.setvar (var, result)
     # end def cmd_read
 
@@ -1040,4 +1040,5 @@ class Interpreter:
 
 if __name__ == '__main__':
     interpreter = Interpreter (sys.argv [1])
+    #interpreter.break_lineno = 337
     interpreter.run ()
