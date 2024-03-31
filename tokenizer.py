@@ -6,12 +6,14 @@ class Tokenizer:
 
     funcs = \
         [ 'ABS'
+        , 'ATN'
         , 'COS'
         , 'INT'
         , 'LOG'
         , 'SGN'
         , 'SIN'
         , 'SQR'
+        , 'TAB'
         ]
     funcs = dict ((k, k) for k in funcs)
 
@@ -76,7 +78,6 @@ class Tokenizer:
         , 'COLON'
         ] + list (funcs) + list (reserved)
 
-    t_STRING  = r'"[^"]*"'
     t_MINUS   = r'-'
     t_PLUS    = r'\+'
     t_TIMES   = r'\*'
@@ -111,6 +112,13 @@ class Tokenizer:
         return t
     # end def t_NUMBER
 
+    def t_STRING (self, t):
+        r'"[^"]*"'
+        v = t.value.strip ('"')
+        t.value = v
+        return t
+    # end def t_STRING
+
     def t_VAR (self, t):
         r'[A-Z]+[0-9A-Z]*[!%$]?'
         if t.value in self.funcs:
@@ -139,7 +147,7 @@ class Tokenizer:
 
     def token (self):
         t = self.lexer.token ()
-        print ('token called: %s' % t)
+        #print ('token called: %s' % t)
         return t
     # end def token
 

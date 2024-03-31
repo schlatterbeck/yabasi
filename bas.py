@@ -5,7 +5,7 @@ import numpy as np
 import re
 import sys
 import tokenizer
-
+import datetime
 
 class Interpreter:
 
@@ -17,6 +17,8 @@ class Interpreter:
         self.data   = []
         self.reclen = {}
         self.var    = {}
+        self.var ['DATE$'] = str (datetime.date.today ())
+        self.var ['TIME$'] = datetime.datetime.now ().strftime ('%H:%M:%S')
 
         self.tokenizer = tokenizer.Tokenizer ()
         self.tokens    = tokenizer.Tokenizer.tokens
@@ -25,7 +27,7 @@ class Interpreter:
         with open (fn, 'r') as f:
             for l in f:
                 l = l.rstrip ()
-                print (l)
+                #print (l)
                 if l [0] == '\x1a':
                     break
                 lineno, r = l.split (None, 1)
@@ -150,18 +152,20 @@ class Interpreter:
             if isinstance (line_or_cmd, int):
                 self.next = int (line_or_cmd)
             else:
-                line_or_cmd ()
+                for cmd in line_or_cmd:
+                    cmd [0] (*cmd [1:])
         elif line_or_cmd2 is not None:
             if isinstance (line_or_cmd2, int):
                 self.next = int (line_or_cmd2)
             else:
-                line_or_cmd2 ()
+                for cmd in line_or_cmd2:
+                    cmd [0] (*cmd [1:])
     # end def cmd_if
 
     def cmd_input (self, vars, s = ''):
-        for v in vars:
-            if callable (v):
-                v (input (s))
+        for var in vars:
+            if callable (var):
+                var (input (s))
             else:
                 self.var [var] = input (s)
             s = ''
@@ -283,7 +287,6 @@ class Interpreter:
                              | return-statement
 
         """
-        #import pdb;pdb.set_trace ()
         cmd = p [1][0]
         method = getattr (self, 'cmd_' + cmd.lower ())
         p [0] = (method, *p [1][1:])
@@ -328,7 +331,7 @@ class Interpreter:
             data-statement : DATA literal-list
         """
         # Must be executed immediately, data can later be read by read commands
-        for d in p [1]:
+        for d in p [2]:
             self.data.append (d)
         p [0] = ('REM',)
     # end def p_data_statement
@@ -362,7 +365,7 @@ class Interpreter:
         """
             dimrhs : VAR LPAREN intlist RPAREN
         """
-        p [0] = (p [1], p [3])
+        p [0] = (p [1], [a + 1 for a in p [3]])
     # end def p_dimrhs
 
     def p_empty (self, p):
@@ -381,32 +384,40 @@ class Interpreter:
         """
             expression : literal
         """
+        p1 = p [1]
         def x ():
-            return p [1]
+            return p1
         p [0] = x
     # end def p_expression_literal
 
     def p_expression_function (self, p):
         """
             expression : ABS LPAREN expression RPAREN
+                       | ATN LPAREN expression RPAREN
                        | COS LPAREN expression RPAREN
                        | LOG LPAREN expression RPAREN
                        | SGN LPAREN expression RPAREN
                        | SIN LPAREN expression RPAREN
                        | SQR LPAREN expression RPAREN
                        | INT LPAREN expression RPAREN
+                       | TAB LPAREN expression RPAREN
         """
         fn = p [1].lower ()
         if fn == 'int':
             fun = int
+        elif fn == 'tab':
+            fun = lambda x: ' '
         else:
             if fn == 'sgn':
                 fn = 'sign'
             if fn == 'sqr':
                 fn = 'sqrt'
+            if fn == 'atn':
+                fn = 'arctan'
             fun = getattr (np, fn)
+        p3 = p [3]
         def x ():
-            return fun (p [3] ())
+            return fun (p3 ())
         p [0] = x
     # end def p_expression_function
 
@@ -485,8 +496,9 @@ class Interpreter:
         """
             expression : MINUS expression
         """
+        p2 = p [2]
         def x ():
-            return - p [2] ()
+            return - p2 ()
         p [0] = x
     # end def p_expression_unaryminus
 
@@ -494,8 +506,9 @@ class Interpreter:
         """
             expression : VAR
         """
+        p1 = p [1]
         def x ():
-            return self.var [p [1]]
+            return self.var [p1]
         p [0] = x
     # end def p_expression_var
 
@@ -633,11 +646,13 @@ class Interpreter:
                 | VAR LPAREN exprlist RPAREN
         """
         if len (p) == 2:
-            return p [1]
+            p [0] = p [1]
         else:
+            p1 = p [1]
+            p3 = p [3]
             def x (v):
-                r = [int (k) for k in p [3] ()]
-                self.var [p [1]][r] = v
+                r = [int (k ()) for k in p3 ()]
+                self.var [p1][r] = v
             p [0] = x
     # end def p_lhs
 
@@ -720,15 +735,17 @@ class Interpreter:
                       | printlist SEMIC
                       | printlist COMMA
         """
+        p1 = p [1]
         if len (p) == 2:
             def x ():
-                return [p [1] ()]
+                return [p1 ()]
         elif len (p) == 3:
             def x ():
-                return [p [1] ()]
+                return p1 ()
         else:
+            p3 = p [3]
             def x ():
-                return p [1] () + [p [3] ()]
+                return p1 () + [p3 ()]
         p [0] = x
     # end def p_printlist
 
@@ -799,7 +816,7 @@ class Interpreter:
         """
         if len (p) == 2:
             p [0] = [p [1]]
-        elif len (p) == 5:
+        else:
             p [0] = p [1] + [p [3]]
     # end def p_varlist_complex
 
