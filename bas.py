@@ -865,14 +865,7 @@ class Interpreter:
                     v = int (v)
                 elif not p1.endswith ('$'):
                     v = float (v)
-                try:
-                    self.dim [p1][r] = v
-                except IndexError:
-                    print ('\n\nIndexError:', p1, r, 'line:', self.lineno)
-                    print ('I1:', self.var ['I1'])
-                    print ('I4:', self.var ['I4'])
-                    print ('I6:', self.var ['I6'])
-                    raise
+                self.dim [p1][*r] = v
             p [0] = x
     # end def p_lhs
 
