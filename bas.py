@@ -48,7 +48,7 @@ class Interpreter:
         }
     special_by_code = dict \
         ((c [0], c [1]) for c in print_special.values ())
-    tabpos = [15, 29, 43, 57]
+    tabpos = [14, 28, 42, 56]
 
     def __init__ (self, fn):
         self.col    = 0
@@ -98,10 +98,12 @@ class Interpreter:
             if prev is not None:
                 self.nextline [prev] = l
             prev = l
+        self.break_lineno = None
     # end def __init__
 
     def fun_tab (self, expr):
-        expr     = int (expr)
+        # We print *at* the tab position
+        expr     = int (expr) - 1
         dif      = expr - self.col
         return ' ' * dif
     # end def fun_tab
@@ -117,6 +119,8 @@ class Interpreter:
         self.running = True
         l = self.lineno = self.first
         while self.running and l:
+            if self.lineno == self.break_lineno:
+                import pdb; pdb.set_trace ()
             self.next = self.nextline.get (l)
             #print ('lineno: %d' % l)
             line = self.lines [l]
@@ -371,6 +375,7 @@ class Interpreter:
                     if '.' in v and not 'e' in v:
                         v = v.rstrip ('0')
                         v = v.rstrip ('.')
+                    v = v + ' '
                 v = str (v)
                 self.col += len (v)
                 l.append (v)
