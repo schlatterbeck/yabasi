@@ -73,6 +73,7 @@ class Tokenizer:
         , 'NE'
         , 'LEFT'
         , 'RIGHT'
+        , 'CHR'
         , 'COMMA'
         , 'SEMIC'
         , 'EQ'
@@ -94,6 +95,7 @@ class Tokenizer:
     t_NE      = r'(<>)|(><)'
     t_LEFT    = r'LEFT[$]'
     t_RIGHT   = r'RIGHT[$]'
+    t_CHR     = r'CHR[$]'
     t_COMMA   = r','
     t_SEMIC   = r';'
     t_EQ      = r'='
@@ -133,7 +135,7 @@ class Tokenizer:
         if t.value in self.reserved:
             t.type = self.reserved [t.value]
             return t
-        if t.value == 'LEFT$' or t.value == 'RIGHT$':
+        if t.value == 'LEFT$' or t.value == 'RIGHT$' or t.value == 'CHR$':
             t.type = t.value [:-1]
             return t
         return t

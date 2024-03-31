@@ -7,6 +7,14 @@ import sys
 import tokenizer
 import datetime
 
+def fun_chr (expr):
+    expr = int (expr)
+    # Don't print formfeed
+    if expr == 12:
+        return ''
+    return chr (expr)
+# end def fun_chr
+
 def fun_cvi (s):
     try:
         return int (s)
@@ -21,17 +29,17 @@ def fun_cvs (s):
         return 0.0
 # end def fun_cvs
 
-def fun_right (expr1, expr2):
-    expr2 = int (expr2)
-    assert isinstance (expr1, str)
-    return expr1 [-expr2:]
-# end def fun_right
-
 def fun_left (expr1, expr2):
     expr2 = int (expr2)
     assert isinstance (expr1, str)
     return expr1 [:expr2]
 # end def fun_left
+
+def fun_right (expr1, expr2):
+    expr2 = int (expr2)
+    assert isinstance (expr1, str)
+    return expr1 [-expr2:]
+# end def fun_right
 
 class Interpreter:
     print_special = \
@@ -40,8 +48,10 @@ class Interpreter:
         }
     special_by_code = dict \
         ((c [0], c [1]) for c in print_special.values ())
+    tabpos = [15, 29, 43, 57]
 
     def __init__ (self, fn):
+        self.col    = 0
         self.lines  = {}
         self.stack  = []
         self.fors   = {}
@@ -90,6 +100,12 @@ class Interpreter:
             prev = l
     # end def __init__
 
+    def fun_tab (self, expr):
+        expr     = int (expr)
+        dif      = expr - self.col
+        return ' ' * dif
+    # end def fun_tab
+
     def insert (self, r):
         if isinstance (r, list):
             self.lines [self.lineno] = (self.cmd_multi, r)
@@ -99,13 +115,13 @@ class Interpreter:
 
     def run (self):
         self.running = True
-        l = self.first
-        while self.running:
-            self.next = self.nextline [l]
+        l = self.lineno = self.first
+        while self.running and l:
+            self.next = self.nextline.get (l)
             #print ('lineno: %d' % l)
             line = self.lines [l]
             line [0] (*line [1:])
-            l = self.next
+            l = self.lineno = self.next
     # end def run
 
     def setvar (self, var, value):
@@ -148,7 +164,7 @@ class Interpreter:
 
     def cmd_cls (self):
         """ Clear screen? """
-        pass
+        self.col = 0
     # end def cmd_cls
 
     def cmd_color (self, intlist):
@@ -179,7 +195,17 @@ class Interpreter:
         to  = to  ()
         if step != 1:
             step = step ()
-        self.fors [var] = [self.next, frm, to, step, frm]
+        self.setvar (var, frm)
+        if (step > 0 and frm <= to) or (step < 0 and frm >= to):
+            self.fors [var] = [self.next, frm, to, step, frm]
+        else:
+            # Skip beyond corresponding 'NEXT'
+            line = self.lines [self.lineno]
+            while line [0] != self.cmd_next or line [1] != var:
+                l = self.lineno = self.next
+                self.next = self.nextline.get (l)
+                line = self.lines [l]
+            #print ('\nSkipped to %d' % self.lineno)
     # end def cmd_for
 
     def cmd_get (self, num):
@@ -247,10 +273,15 @@ class Interpreter:
         fors = self.fors [var]
         # Add step
         fors [-1] += fors [3]
-        if fors [-1] <= fors [2]:
+        self.setvar (var, fors [-1])
+        #print ('NEXT: %s = %s' % (var, fors [-1]))
+        if  (  (fors [3] > 0 and fors [-1] <= fors [2])
+            or (fors [3] < 0 and fors [-1] >= fors [2])
+            ):
             self.next = fors [0]
         else:
             del self.fors [var]
+            #print ('\nNEXT: %s DONE' % (var,))
     # end def cmd_next
 
     def cmd_ongoto (self, expr, lines):
@@ -279,19 +310,84 @@ class Interpreter:
     # end def cmd_open_read
 
     def cmd_print (self, printlist, fhandle = None, using = False):
-        f = sys.stdout
+        file = sys.stdout
         if fhandle is not None:
-            f = self.files [fhandle]
-        l = []
-        c = None
-        for s in printlist ():
-            c = self.special_by_code.get (s, None)
+            file = self.files [fhandle]
+        l   = []
+        c   = None
+        fmt = None
+        for n, v in enumerate (printlist ()):
+            if callable (v):
+                v = v ()
+            if n == 0 and using:
+                f   = []
+                s   = 0
+                bc  = 0
+                ac  = 0
+                fmt = []
+                for x in v:
+                    if x == '#':
+                        if s == 0:
+                            bc += 1
+                        elif s == 1:
+                            ac += 1
+                        else:
+                            assert 0
+                    elif x == '.':
+                        assert s == 0
+                        s = 1
+                    elif x == '^':
+                        if ac or bc:
+                            ln = ac + bc + s
+                            f.append ('%%%s.%sf' % (ln, ac))
+                            fmt.append (''.join (f))
+                            f = []
+                        ac = bc = 0
+                    else:
+                        if ac or bc:
+                            ln = ac + bc + s
+                            f.append ('%%%s.%sf' % (ln, ac))
+                            fmt.append (''.join (f))
+                            f = []
+                        ac = bc = 0
+                        f.append (x)
+                if ac or bc:
+                    ln = ac + bc + s
+                    f.append ('%%%s.%sf' % (ln, ac))
+                    fmt.append (''.join (f))
+                    f = []
+                continue
+            c = self.special_by_code.get (v, None)
             if c is None:
-                l.append (str (s))
+                if fmt:
+                    f = fmt.pop (0)
+                    v = f % v
+                elif isinstance (v, float):
+                    v = '%8.7g' % v
+                    v = v.lstrip ()
+                    if v != '0':
+                        v = v.lstrip ('0')
+                    v = ' ' + v
+                    if '.' in v and not 'e' in v:
+                        v = v.rstrip ('0')
+                        v = v.rstrip ('.')
+                v = str (v)
+                self.col += len (v)
+                l.append (v)
+            elif c == 'COMMA':
+                for tb in self.tabpos:
+                    if self.col >= tb:
+                        continue
+                    v = ' ' * (tb - self.col)
+                    l.append (v)
+                    self.col += len (v)
+                    break
         end = '\n'
-        if c is not None:
+        if c is None:
+            self.col = 0
+        else:
             end = ''
-        print (''.join (l), file = f, end = end)
+        print (''.join (l), file = file, end = end)
     # end def cmd_print
 
     def cmd_read (self, vars):
@@ -479,16 +575,19 @@ class Interpreter:
                        | TAB LPAREN expression RPAREN
                        | CVI LPAREN expression RPAREN
                        | CVS LPAREN expression RPAREN
+                       | CHR LPAREN expression RPAREN
         """
         fn = p [1].lower ()
         if fn == 'int':
             fun = int
         elif fn == 'tab':
-            fun = lambda x: ' '
+            fun = self.fun_tab
         elif fn == 'cvi':
             fun = fun_cvi
         elif fn == 'cvs':
             fun = fun_cvs
+        elif fn == 'chr$':
+            fun = fun_chr
         else:
             if fn == 'sgn':
                 fn = 'sign'
@@ -761,7 +860,14 @@ class Interpreter:
                     v = int (v)
                 elif not p1.endswith ('$'):
                     v = float (v)
-                self.dim [p1][r] = v
+                try:
+                    self.dim [p1][r] = v
+                except IndexError:
+                    print ('\n\nIndexError:', p1, r, 'line:', self.lineno)
+                    print ('I1:', self.var ['I1'])
+                    print ('I4:', self.var ['I4'])
+                    print ('I6:', self.var ['I6'])
+                    raise
             p [0] = x
     # end def p_lhs
 
@@ -847,7 +953,7 @@ class Interpreter:
             def x ():
                 if p1 is None:
                     return []
-                return [p1 ()]
+                return [p1]
         elif len (p) == 3:
             p2 = self.print_special [p [2]][0]
             def x ():
@@ -856,7 +962,7 @@ class Interpreter:
             p2 = self.print_special [p [2]][0]
             p3 = p [3]
             def x ():
-                return p1 () + [p2, p3 ()]
+                return p1 () + [p2, p3]
         p [0] = x
     # end def p_printlist
 
@@ -868,7 +974,7 @@ class Interpreter:
         p2 = p [2]
         p3 = p [3]
         def x ():
-            return p1 () + [p2 (), p3]
+            return p1 () + [p2, p3]
         p [0] = x
     # end def p_printlist_ex_str
 
@@ -881,11 +987,11 @@ class Interpreter:
         p2 = p [2]
         if len (p) == 3:
             def x ():
-                return [p1, p2 ()]
+                return [p1, p2]
         else:
             p3 = p [3]
             def x ():
-                return p1 + [p2, p3 ()]
+                return p1 () + [p2, p3]
         p [0] = x
     # end def p_printlist_str_ex
 
