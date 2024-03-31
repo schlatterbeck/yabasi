@@ -8,6 +8,8 @@ class Tokenizer:
         [ 'ABS'
         , 'ATN'
         , 'COS'
+        , 'CVI'
+        , 'CVS'
         , 'INT'
         , 'LOG'
         , 'SGN'
@@ -69,6 +71,8 @@ class Tokenizer:
         , 'LE'
         , 'GE'
         , 'NE'
+        , 'LEFT'
+        , 'RIGHT'
         , 'COMMA'
         , 'SEMIC'
         , 'EQ'
@@ -88,6 +92,8 @@ class Tokenizer:
     t_LT      = r'<'
     t_LE      = r'<='
     t_NE      = r'(<>)|(><)'
+    t_LEFT    = r'LEFT[$]'
+    t_RIGHT   = r'RIGHT[$]'
     t_COMMA   = r','
     t_SEMIC   = r';'
     t_EQ      = r'='
@@ -126,6 +132,9 @@ class Tokenizer:
             return t
         if t.value in self.reserved:
             t.type = self.reserved [t.value]
+            return t
+        if t.value == 'LEFT$' or t.value == 'RIGHT$':
+            t.type = t.value [:-1]
             return t
         return t
     # end def t_VAR

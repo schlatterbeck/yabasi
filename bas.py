@@ -7,7 +7,39 @@ import sys
 import tokenizer
 import datetime
 
+def fun_cvi (s):
+    try:
+        return int (s)
+    except ValueError:
+        return 0
+# end def fun_cvi
+
+def fun_cvs (s):
+    try:
+        return float (s)
+    except ValueError:
+        return 0.0
+# end def fun_cvs
+
+def fun_right (expr1, expr2):
+    expr2 = int (expr2)
+    assert isinstance (expr1, str)
+    return expr1 [-expr2:]
+# end def fun_right
+
+def fun_left (expr1, expr2):
+    expr2 = int (expr2)
+    assert isinstance (expr1, str)
+    return expr1 [:expr2]
+# end def fun_left
+
 class Interpreter:
+    print_special = \
+        { ',' : ('++,++', 'COMMA')
+        , ';' : ('++;++', 'SEMIC')
+        }
+    special_by_code = dict \
+        ((c [0], c [1]) for c in print_special.values ())
 
     def __init__ (self, fn):
         self.lines  = {}
@@ -16,7 +48,11 @@ class Interpreter:
         self.files  = {}
         self.data   = []
         self.reclen = {}
+        self.fields = {}
+        self.defint = {}
+        # Variables and dimensioned variables do not occupy the same namespace
         self.var    = {}
+        self.dim    = {}
         self.var ['DATE$'] = str (datetime.date.today ())
         self.var ['TIME$'] = datetime.datetime.now ().strftime ('%H:%M:%S')
 
@@ -66,10 +102,22 @@ class Interpreter:
         l = self.first
         while self.running:
             self.next = self.nextline [l]
+            #print ('lineno: %d' % l)
             line = self.lines [l]
             line [0] (*line [1:])
             l = self.next
     # end def run
+
+    def setvar (self, var, value):
+        if callable (var):
+            var (value)
+        else:
+            if var.endswith ('%') or var in self.defint:
+                value = int (value)
+            if not var.endswith ('$'):
+                value = float (value)
+            self.var [var] = value
+    # end def setvar
 
     # COMMANDS
 
@@ -78,10 +126,7 @@ class Interpreter:
             result = expr ()
         else:
             result = expr
-        if callable (var):
-            var (result)
-        else:
-            self.var [var] = result
+        self.setvar (var, result)
     # end def cmd_assign
 
     def cmd_close (self, fhandle = None):
@@ -90,12 +135,14 @@ class Interpreter:
         """
         if fhandle is None:
             for fh in self.files:
-                self.files [fh].close ()
+                if self.files [fh] != sys.stdout:
+                    self.files [fh].close ()
             self.files = {}
             return
         if not isinstance (fhandle, str):
             fhandle = '#%d' % fhandle
-        self.files [fhandle].close ()
+        if self.files [fhandle] and self.files [fhandle] != sys.stdout:
+            self.files [fhandle].close ()
         del self.files [fhandle]
     # end def cmd_close
 
@@ -110,12 +157,13 @@ class Interpreter:
 
     def cmd_defint (self, vars):
         for v in vars:
+            self.defint [v] = 1
             self.var [v] = 0
     # end def cmd_defint
 
     def cmd_dim (self, dimlist):
         for v, l in dimlist:
-            self.var [v] = np.zeros (l)
+            self.dim [v] = np.zeros (l)
     # end def cmd_dim
 
     def cmd_end (self):
@@ -123,7 +171,7 @@ class Interpreter:
     # end def cmd_end
 
     def cmd_field (self, fhandle, fieldlist):
-        raise NotImplementedError ('"FIELD" Not yet implemented')
+        self.fields [fhandle] = fieldlist
     # end def cmd_field
 
     def cmd_for (self, var, frm, to, step = 1):
@@ -135,7 +183,17 @@ class Interpreter:
     # end def cmd_for
 
     def cmd_get (self, num):
-        raise NotImplementedError ('"GET" not yet implemented')
+        fh = '#%d' % num
+        fl = self.fields [fh]
+        if self.files [fh] is None:
+            for l, var in fl:
+                self.var [var] = ''
+        else:
+            r = self.files [fh].read (self.reclen [fh])
+            off = 0
+            for l, var in fl:
+                self.var [var] = r [off:off+l]
+                off += l
     # end def cmd_get
 
     def cmd_gosub (self, nextline):
@@ -147,28 +205,31 @@ class Interpreter:
         self.next = int (nextline)
     # end def cmd_goto
 
+    def _cmd_if (self, line_or_cmd):
+        if isinstance (line_or_cmd, int):
+            self.next = int (line_or_cmd)
+        elif isinstance (line_or_cmd, tuple):
+            line_or_cmd [0] (*line_or_cmd [1:])
+        else:
+            for cmd in line_or_cmd:
+                cmd [0] (*cmd [1:])
+    # end def _cmd_if
+
     def cmd_if (self, expr, line_or_cmd, line_or_cmd2 = None):
         if expr ():
-            if isinstance (line_or_cmd, int):
-                self.next = int (line_or_cmd)
-            else:
-                for cmd in line_or_cmd:
-                    cmd [0] (*cmd [1:])
+            self._cmd_if (line_or_cmd)
         elif line_or_cmd2 is not None:
-            if isinstance (line_or_cmd2, int):
-                self.next = int (line_or_cmd2)
-            else:
-                for cmd in line_or_cmd2:
-                    cmd [0] (*cmd [1:])
+            self._cmd_if (line_or_cmd2)
     # end def cmd_if
 
     def cmd_input (self, vars, s = ''):
-        for var in vars:
-            if callable (var):
-                var (input (s))
-            else:
-                self.var [var] = input (s)
-            s = ''
+        value = input (s + ': ')
+        if len (vars) > 1:
+            for var, v in zip (vars, value.split (',')):
+                self.setvar (var, v)
+        else:
+            var = vars [0]
+            self.setvar (vars [0], value)
     # end def cmd_input
 
     def cmd_locate (self, num):
@@ -179,14 +240,17 @@ class Interpreter:
     def cmd_multi (self, l):
         """ Multiple commands separated by colon """
         for item in l:
-            l [0] (l [1:])
+            item [0] (*item [1:])
     # end def cmd_multi
 
     def cmd_next (self, var):
         fors = self.fors [var]
         # Add step
         fors [-1] += fors [3]
-        self.next = fors [0]
+        if fors [-1] <= fors [2]:
+            self.next = fors [0]
+        else:
+            del self.fors [var]
     # end def cmd_next
 
     def cmd_ongoto (self, expr, lines):
@@ -197,31 +261,43 @@ class Interpreter:
     def cmd_open (self, expr, fhandle):
         expr = expr ()
         assert isinstance (expr, str)
-        self.files [fhandle] = open (expr, 'w')
+        if expr == 'SCRN:':
+            self.files [fhandle] = sys.stdout
+        else:
+            self.files [fhandle] = open (expr, 'w')
     # end def cmd_open
 
     def cmd_open_read (self, expr, fhandle, len_expr):
         expr = expr ()
         len_expr = int (len_expr ())
         assert isinstance (expr, str)
-        self.files  [fhandle] = open (expr, 'r')
-        self.reclen [fhandle] = len_expr
+        try:
+            self.files  [fhandle] = open (expr, 'r')
+            self.reclen [fhandle] = len_expr
+        except FileNotFoundError:
+            self.files [fhandle] = None
     # end def cmd_open_read
 
-    def cmd_print (self, printlist, fhandle = None):
+    def cmd_print (self, printlist, fhandle = None, using = False):
         f = sys.stdout
         if fhandle is not None:
             f = self.files [fhandle]
-        print (''.join (str (s) for s in printlist ()), file = f)
+        l = []
+        c = None
+        for s in printlist ():
+            c = self.special_by_code.get (s, None)
+            if c is None:
+                l.append (str (s))
+        end = '\n'
+        if c is not None:
+            end = ''
+        print (''.join (l), file = f, end = end)
     # end def cmd_print
 
     def cmd_read (self, vars):
         for var in vars:
             result = self.data.pop ()
-            if callable (var):
-                var (result)
-            else:
-                self.var [var] = result
+            self.setvar (var, result)
     # end def cmd_read
 
     def cmd_rem (self):
@@ -296,7 +372,7 @@ class Interpreter:
         """
             assignment-statement : lhs EQ expression
         """
-        p [0] = ['assign', p [1], p [3]]
+        p [0] = ('assign', p [1], p [3])
     # end def p_assignment_statement
 
     def p_cls_statement (self, p):
@@ -401,12 +477,18 @@ class Interpreter:
                        | SQR LPAREN expression RPAREN
                        | INT LPAREN expression RPAREN
                        | TAB LPAREN expression RPAREN
+                       | CVI LPAREN expression RPAREN
+                       | CVS LPAREN expression RPAREN
         """
         fn = p [1].lower ()
         if fn == 'int':
             fun = int
         elif fn == 'tab':
             fun = lambda x: ' '
+        elif fn == 'cvi':
+            fun = fun_cvi
+        elif fn == 'cvs':
+            fun = fun_cvs
         else:
             if fn == 'sgn':
                 fn = 'sign'
@@ -420,6 +502,24 @@ class Interpreter:
             return fun (p3 ())
         p [0] = x
     # end def p_expression_function
+
+    def p_expression_function_2 (self, p):
+        """
+            expression : LEFT  LPAREN expression COMMA expression RPAREN
+                       | RIGHT LPAREN expression COMMA expression RPAREN
+        """
+        fn = p [1].lower ()
+        if fn == 'left$':
+            fun = fun_left
+        else:
+            assert fn == 'right$'
+            fun = fun_right
+        p3 = p [3]
+        p5 = p [5]
+        def x ():
+            return fun (p3 (), p5 ())
+        p [0] = x
+    # end def p_expression_function_2
 
     def p_expression_paren (self, p):
         """
@@ -508,7 +608,12 @@ class Interpreter:
         """
         p1 = p [1]
         def x ():
-            return self.var [p1]
+            if p1.endswith ('$'):
+                return self.var.get (p1, '')
+            elif p1.endswith ('%'):
+                return self.var.get (p1, 0)
+            else:
+                return self.var.get (p1, 0.0)
         p [0] = x
     # end def p_expression_var
 
@@ -519,8 +624,8 @@ class Interpreter:
         p1 = p [1]
         p3 = p [3]
         def x ():
-            r = [int (k ()) for k in p3 ()]
-            return self.var [p1][r]
+            r = [int (k) for k in p3 ()]
+            return self.dim [p1][*r]
         p [0] = x
     # end def p_expression_var_complex
 
@@ -532,11 +637,11 @@ class Interpreter:
         p1 = p [1]
         if len (p) == 2:
             def x ():
-                return [p1]
+                return [p1 ()]
         else:
             p3 = p [3]
             def x ():
-                return [p1] + p3
+                return p1 () + [p3 ()]
         p [0] = x
     # end def p_exprlist
 
@@ -651,8 +756,12 @@ class Interpreter:
             p1 = p [1]
             p3 = p [3]
             def x (v):
-                r = [int (k ()) for k in p3 ()]
-                self.var [p1][r] = v
+                r = [int (k) for k in p3 ()]
+                if p1.endswith ('%'):
+                    v = int (v)
+                elif not p1.endswith ('$'):
+                    v = float (v)
+                self.dim [p1][r] = v
             p [0] = x
     # end def p_lhs
 
@@ -716,14 +825,12 @@ class Interpreter:
                             | PRINT FHANDLE COMMA printlist
                             | PRINT FHANDLE COMMA USING printlist
         """
-        if len (p) == 2:
-            p [0] = (p [1], [])
-        elif len (p) == 3:
+        if len (p) == 3:
             p [0] = (p [1], p [2])
         elif len (p) == 5:
             p [0] = (p [1], p [4], p [2])
         else:
-            p [0] = (p [1], p [4], p [2], True)
+            p [0] = (p [1], p [5], p [2], True)
     # end def p_print_statement
 
     def p_printlist (self, p):
@@ -738,28 +845,30 @@ class Interpreter:
         p1 = p [1]
         if len (p) == 2:
             def x ():
+                if p1 is None:
+                    return []
                 return [p1 ()]
         elif len (p) == 3:
+            p2 = self.print_special [p [2]][0]
             def x ():
-                return p1 ()
+                return p1 () + [p2]
         else:
+            p2 = self.print_special [p [2]][0]
             p3 = p [3]
             def x ():
-                return p1 () + [p3 ()]
+                return p1 () + [p2, p3 ()]
         p [0] = x
     # end def p_printlist
 
     def p_printlist_ex_str (self, p):
         """
             printlist : printlist expression STRING
-                      | expression STRING
         """
-        if len (p) == 3:
-            def x ():
-                return [p [2] (), p [3]]
-        else:
-            def x ():
-                return p [1] () + [p [2] (), p [3]]
+        p1 = p [1]
+        p2 = p [2]
+        p3 = p [3]
+        def x ():
+            return p1 () + [p2 (), p3]
         p [0] = x
     # end def p_printlist_ex_str
 
@@ -768,12 +877,15 @@ class Interpreter:
             printlist : printlist STRING expression
                       | STRING expression
         """
+        p1 = p [1]
+        p2 = p [2]
         if len (p) == 3:
             def x ():
-                return [p [2], p [3] ()]
+                return [p1, p2 ()]
         else:
+            p3 = p [3]
             def x ():
-                return p [1] () + [p [2], p [3] ()]
+                return p1 + [p2, p3 ()]
         p [0] = x
     # end def p_printlist_str_ex
 
