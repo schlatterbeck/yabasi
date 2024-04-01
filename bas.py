@@ -215,6 +215,9 @@ class Interpreter:
             return
         if not isinstance (fhandle, str):
             fhandle = '#%d' % fhandle
+        if fhandle not in self.files:
+            print ("Warning: Closing unopened file %s" % fhandle)
+            return
         if self.files [fhandle] and self.files [fhandle] != sys.stdout:
             self.files [fhandle].close ()
         del self.files [fhandle]
