@@ -1,4 +1,10 @@
 .*.swp
 *.out
+*.OUT
+*.GNN
+*.bout
+*.pout
+*.bas
+*.BAS
 __pycache__
 parsetab.py

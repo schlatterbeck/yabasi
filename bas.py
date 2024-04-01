@@ -92,6 +92,83 @@ def format_float (v):
     return v
 # end def format_float
 
+class Print_Using:
+    """ Formatter for USING in a print statement
+    >>> p = Print_Using ('###.##    ')
+    >>> p.fmt
+    ['%6.2f    ']
+    >>> p = Print_Using ('       ##.###^^^^')
+    >>> p.fmt
+    ['       %.4E']
+    >>> p = Print_Using ('   ###.##   ')
+    >>> p.fmt
+    ['   %6.2f   ']
+    >>> p = Print_Using ('   ###.##')
+    >>> p.fmt
+    ['   %6.2f']
+    >>> p = Print_Using ('###  ###   ##')
+    >>> p.fmt
+    ['%3.0f  ', '%3.0f   ', '%2.0f']
+    """
+
+    def __init__ (self, formatstring):
+        self.f1  = []
+        self.f2  = []
+        self.s   = 0
+        self.bc  = 0
+        self.ac  = 0
+        self.e   = 0
+        self.fmt = []
+        self.parse_format (formatstring)
+    # end def __init__
+
+    def append_fmt (self):
+        if self.ac or self.bc:
+            ln = self.ac + self.bc + self.s
+            if self.e:
+                self.f1.append ('%%.%sE' % (ln - 2))
+            else:
+                self.f1.append ('%%%s.%sf' % (ln, self.ac))
+            self.fmt.append (''.join (self.f1 + self.f2))
+        self.ac = self.bc = self.e = self.s = 0
+        self.f1 = []
+        self.f2 = []
+    # end def append_fmt
+
+    def get (self):
+        # Formats can be re-used for multiple variables
+        if len (self.fmt) > 1:
+            f = self.fmt.pop (0)
+        else:
+            f = self.fmt [0]
+        return f
+    # end def get
+
+    def parse_format (self, v):
+        for x in v:
+            if x == '#':
+                if self.f2:
+                    self.append_fmt ()
+                if self.s == 0:
+                    self.bc += 1
+                elif self.s == 1:
+                    self.ac += 1
+                else:
+                    assert 0
+            elif x == '.':
+                self.s = 1
+            elif x == '^':
+                self.e += 1
+            else:
+                if self.ac > 0 or self.bc > 0:
+                    self.f2.append (x)
+                else:
+                    self.f1.append (x)
+        self.append_fmt ()
+    # end def parse_format
+
+# end class Print_Using
+
 class Interpreter:
     print_special = \
         { ',' : ('++,++', 'COMMA')
@@ -375,46 +452,6 @@ class Interpreter:
             self.files [fhandle] = None
     # end def cmd_open_read
 
-    def _format_using (self, v):
-        f   = []
-        s   = 0
-        bc  = 0
-        ac  = 0
-        fmt = []
-        for x in v:
-            if x == '#':
-                if s == 0:
-                    bc += 1
-                elif s == 1:
-                    ac += 1
-                else:
-                    assert 0
-            elif x == '.':
-                assert s == 0
-                s = 1
-            elif x == '^':
-                if ac or bc:
-                    ln = ac + bc + s
-                    f.append ('%%%s.%sf' % (ln, ac))
-                    fmt.append (''.join (f))
-                    f = []
-                ac = bc = 0
-            else:
-                if ac or bc:
-                    ln = ac + bc + s
-                    f.append ('%%%s.%sf' % (ln, ac))
-                    fmt.append (''.join (f))
-                    f = []
-                ac = bc = 0
-                f.append (x)
-        if ac or bc:
-            ln = ac + bc + s
-            f.append ('%%%s.%sf' % (ln, ac))
-            fmt.append (''.join (f))
-            f = []
-        return fmt
-    # end def _format_using
-
     def cmd_print (self, printlist, fhandle = None, using = False):
         file = sys.stdout
         if fhandle is not None:
@@ -426,19 +463,19 @@ class Interpreter:
             if callable (v):
                 v = v ()
             if n == 0 and using:
-                fmt = self._format_using (v)
+                fmt = Print_Using (v)
                 continue
             c = self.special_by_code.get (v, None)
             if c is None:
                 if fmt:
-                    f = fmt.pop (0)
+                    f = fmt.get ()
                     v = f % v
                 elif isinstance (v, float):
                     v = format_float (v)
                 v = str (v)
                 self.col += len (v)
                 l.append (v)
-            elif c == 'COMMA':
+            elif c == 'COMMA' and not using:
                 for tb in self.tabpos:
                     if self.col >= tb:
                         continue
