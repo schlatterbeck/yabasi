@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 
 from ply import yacc
+from argparse import ArgumentParser
 import numpy as np
 import re
 import sys
@@ -100,7 +101,10 @@ class Interpreter:
         ((c [0], c [1]) for c in print_special.values ())
     tabpos = [14, 28, 42, 56]
 
-    def __init__ (self, fn):
+    def __init__ (self, fn, input = None):
+        self.input  = None
+        if input:
+            self.input = open (input, 'r')
         self.col    = 0
         self.lines  = {}
         self.stack  = []
@@ -303,7 +307,12 @@ class Interpreter:
     # end def cmd_if
 
     def cmd_input (self, vars, s = ''):
-        value = input (s + ': ')
+        prompt = s + ': '
+        if self.input is not None:
+            print (prompt, end = '')
+            value = self.input.readline ().rstrip ()
+        else:
+            value = input (prompt)
         if len (vars) > 1:
             for var, v in zip (vars, value.split (',')):
                 self.setvar (var, v)
@@ -1085,7 +1094,26 @@ class Interpreter:
 
 # end class Interpreter
 
-if __name__ == '__main__':
-    interpreter = Interpreter (sys.argv [1])
-    #interpreter.break_lineno = 337
+def main (argv = sys.argv [1:]):
+    cmd = ArgumentParser ()
+    cmd.add_argument \
+        ( 'program'
+        , help = 'Basic program to run'
+        )
+    cmd.add_argument \
+        ( '-i', '--input-file'
+        , help = 'Read input from file instead of stdin'
+        )
+    cmd.add_argument \
+        ( '-L', '--break-line'
+        , help = 'Line in basic where to stop in (python-) debugger'
+        , type = int
+        )
+    args = cmd.parse_args (argv)
+    interpreter = Interpreter (args.program, input = args.input_file)
+    interpreter.break_lineno = args.break_line
     interpreter.run ()
+# end def main
+
+if __name__ == '__main__':
+    main ()
