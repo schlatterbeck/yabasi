@@ -765,19 +765,23 @@ class Interpreter:
         p [0] = x
     # end def p_expression_unaryminus
 
+    def _var_helper (self, p1):
+        default = 0.0
+        if p1.endswith ('$'):
+            default = ''
+        elif p1.endswith ('%'):
+            default = 0
+        def x ():
+            return self.var.get (p1, default)
+        return x
+    # end def _var_helper
+
     def p_expression_var (self, p):
         """
             expression : VAR
         """
         p1 = p [1]
-        def x ():
-            if p1.endswith ('$'):
-                return self.var.get (p1, '')
-            elif p1.endswith ('%'):
-                return self.var.get (p1, 0)
-            else:
-                return self.var.get (p1, 0.0)
-        p [0] = x
+        p [0] = self._var_helper (p1)
     # end def p_expression_var
 
     def p_expression_var_complex (self, p):
@@ -1051,6 +1055,17 @@ class Interpreter:
                 return p1 () + [p2, p3]
         p [0] = x
     # end def p_printlist_str_ex
+
+    def p_printlist_var (self, p):
+        """
+            printlist : printlist VAR
+        """
+        p1 = p [1]
+        p2 = p [2]
+        def x ():
+            return p1 () + [self._var_helper (p2)]
+        p [0] = x
+    # end def p_printlist_var
 
     def p_read_statement (self, p):
         """
