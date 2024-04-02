@@ -6,5 +6,9 @@
 *.pout
 *.bas
 *.BAS
+*.egg-info
 __pycache__
+dist
+build
+VERSION
 parsetab.py

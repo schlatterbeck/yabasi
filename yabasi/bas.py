@@ -5,8 +5,8 @@ from argparse import ArgumentParser
 import numpy as np
 import re
 import sys
-import tokenizer
 import datetime
+from . import tokenizer
 
 def fun_chr (expr):
     expr = int (expr)
@@ -77,13 +77,15 @@ def format_float (v):
     ' 42.82857 '
     >>> format_float (-.9036958111)
     '-.9036958 '
+    >>> format_float (1.700281111E+02)
+    ' 170.0281 '
     """
     if v == 0.0:
         return ' 0 '
     e = int (np.floor (np.log10 (np.abs (v))))
     x = _fmt_float (v)
     f = '{:#.7g}'
-    if abs (e) > 7 or len (x) >= 7 and abs (e) > 1:
+    if abs (e) > 7 or len (x) >= 7 and e < -1:
         f = '%12E'
     v = _fmt_float (v, fmt = f)
     if not v.startswith ('-'):
