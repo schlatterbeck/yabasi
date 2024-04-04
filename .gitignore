@@ -12,3 +12,5 @@ dist
 build
 VERSION
 parsetab.py
+announce_pypi
+upload_pypi

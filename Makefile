@@ -18,7 +18,7 @@ all: $(VERSION)
 clean:
 	rm -f README.html yabasi/Version.py announce_pypi VERSION
 	rm -rf dist build upload upload_homepage ReleaseNotes.txt \
-            yabasi.egg-info __pycache__
+            yabasi.egg-info __pycache__ upload_pypi announce_pypi
 
 .PHONY: clean
 
