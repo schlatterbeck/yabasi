@@ -1,5 +1,7 @@
-YABASI -- Yet another BASIC Interpreter
-=======================================
+.. |--| unicode:: U+2013   .. en dash
+
+YABASI |--| Yet another BASIC Interpreter
+=========================================
 
 :Author: Ralf Schlatterbeck <rsc@runtux.com>
 
