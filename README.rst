@@ -1,6 +1,8 @@
 YABASI -- Yet another BASIC Interpreter
 =======================================
 
+:Author: Ralf Schlatterbeck <rsc@runtux.com>
+
 This is a BASIC interpreter for an old dialect of the language used in
 early IBM PCs. It is written in Python. I wrote this over a weekend to
 be able to run old MININEC_ code (the linked version of MININEC_
