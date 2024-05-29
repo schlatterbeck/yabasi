@@ -23,6 +23,19 @@ achieved the purpose: Running (and debugging in Python) old MININEC_
 code to allow me to compare the computations in BASIC to my
 re-implementation of MININEC_ in Python, pymininec_.
 
+Changes
+-------
+
+Version 0.3: Fix rules for printlist
+
+The syntax of parameters to the PRINT statement can either use a
+semicolon (or a comma) to separate expressions or just put the
+expressions together without a separator. The latter had some quite
+ad-hoc rules and I've removed many of them, the result removes a
+reduce/reduce conflict...
+
+Version 0.2: First working (released) version
+
 .. _MININEC: https://github.com/schlatterbeck/MiniNec
 .. _pcbasic: https://robhagemans.github.io/pcbasic/
 .. _pymininec: https://github.com/schlatterbeck/pymininec

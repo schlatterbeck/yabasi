@@ -1045,6 +1045,7 @@ class Interpreter:
                       | expression
                       | printlist SEMIC expression
                       | printlist COMMA expression
+                      | printlist expression
                       | printlist SEMIC
                       | printlist COMMA
         """
@@ -1055,9 +1056,16 @@ class Interpreter:
                     return []
                 return [p1]
         elif len (p) == 3:
-            p2 = self.print_special [p [2]][0]
-            def x ():
-                return p1 () + [p2]
+            if p [2] == ';' or p [2] == ',':
+                p2 = self.print_special [p [2]][0]
+                def x ():
+                    return p1 () + [p2]
+            else:
+                # Two expressions are equivalent to a left-out semicolon
+                px = self.print_special [';'][0]
+                p2 = p [2]
+                def x ():
+                    return p1 () + [px, p2]
         else:
             p2 = self.print_special [p [2]][0]
             p3 = p [3]
@@ -1065,46 +1073,6 @@ class Interpreter:
                 return p1 () + [p2, p3]
         p [0] = x
     # end def p_printlist
-
-    def p_printlist_ex_str (self, p):
-        """
-            printlist : printlist expression STRING
-        """
-        p1 = p [1]
-        p2 = p [2]
-        p3 = p [3]
-        def x ():
-            return p1 () + [p2, p3]
-        p [0] = x
-    # end def p_printlist_ex_str
-
-    def p_printlist_str_ex (self, p):
-        """
-            printlist : printlist STRING expression
-                      | STRING expression
-        """
-        p1 = p [1]
-        p2 = p [2]
-        if len (p) == 3:
-            def x ():
-                return [p1, p2]
-        else:
-            p3 = p [3]
-            def x ():
-                return p1 () + [p2, p3]
-        p [0] = x
-    # end def p_printlist_str_ex
-
-    def p_printlist_var (self, p):
-        """
-            printlist : printlist VAR
-        """
-        p1 = p [1]
-        p2 = p [2]
-        def x ():
-            return p1 () + [self._var_helper (p2)]
-        p [0] = x
-    # end def p_printlist_var
 
     def p_read_statement (self, p):
         """
