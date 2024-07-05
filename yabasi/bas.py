@@ -393,6 +393,7 @@ class Interpreter:
         if self.input is not None:
             print (prompt, end = '')
             value = self.input.readline ().rstrip ()
+            print (value)
         else:
             value = input (prompt)
         if len (vars) > 1:
