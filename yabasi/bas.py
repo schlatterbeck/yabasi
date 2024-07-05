@@ -42,8 +42,8 @@ def fun_right (expr1, expr2):
     return expr1 [-expr2:]
 # end def fun_right
 
-#def _fmt_float (v, fmt = '%8f'):
-def _fmt_float (v, fmt = '{:#.8g}'):
+#def _fmt_float (v, fmt = '%9f'):
+def _fmt_float (v, fmt = '{:#.9g}'):
     sign = ''
     if fmt.startswith ('{'):
         x = fmt.format (v).strip ()
@@ -70,28 +70,32 @@ def format_float (v):
     >>> format_float (-0.001)
     '-.001 '
     >>> format_float (2.141428111)
-    ' 2.141428 '
+    ' 2.1414281 '
     >>> format_float (4.99262212345e-03)
-    ' .004992622 '
+    ' .00499262 '
     >>> format_float (42.82857111)
-    ' 42.82857 '
+    ' 42.828571 '
     >>> format_float (-.9036958111)
-    '-.9036958 '
+    '-.90369581 '
     >>> format_float (1.700281111E+02)
-    ' 170.0281 '
+    ' 170.02811 '
     >>> format_float (.0497375)
     ' .0497375 '
     >>> format_float (.07958)
     ' .07958 '
     >>> format_float (.0099475)
     ' .0099475 '
+    >>> format_float (-.16039812)
+    '-.16039812 '
     """
     if v == 0.0:
         return ' 0 '
     e = int (np.floor (np.log10 (np.abs (v))))
     x = _fmt_float (v)
-    f = '{:#.7g}'
-    if abs (e) > 7 or len (x) >= 7 and e < -3:
+    f = '{:#.8g}'
+    if -3 <= e <= -1:
+        f = '%.8f'
+    if abs (e) > 8 or len (x) >= 8 and e < -3:
         f = '%12E'
     v = _fmt_float (v, fmt = f)
     if not v.startswith ('-'):
