@@ -928,7 +928,8 @@ class Interpreter:
 
     def p_input_statement (self, p):
         """
-            input-statement : INPUT STRING SEMIC VAR
+            input-statement : INPUT STRING_SQ SEMIC VAR
+                            | INPUT STRING_DQ SEMIC VAR
         """
         p [0] = (p [1], [p [4]], p [2])
     # end def p_input_statement
@@ -974,7 +975,8 @@ class Interpreter:
     def p_literal (self, p):
         """
             literal : NUMBER
-                    | STRING
+                    | STRING_DQ
+                    | STRING_SQ
         """
         p [0] = p [1]
     # end def p_literal

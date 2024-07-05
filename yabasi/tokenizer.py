@@ -59,7 +59,8 @@ class Tokenizer:
 
     tokens = \
         [ 'NUMBER'
-        , 'STRING'
+        , 'STRING_DQ'
+        , 'STRING_SQ'
         , 'VAR'
         , 'MINUS'
         , 'PLUS'
@@ -120,12 +121,19 @@ class Tokenizer:
         return t
     # end def t_NUMBER
 
-    def t_STRING (self, t):
-        r'"[^"]*"'
+    def t_STRING_DQ (self, t):
+        r'["][^"]*["]'
         v = t.value.strip ('"')
         t.value = v
         return t
-    # end def t_STRING
+    # end def t_STRING_DQ
+
+    def t_STRING_SQ (self, t):
+        r"['][^']*[']"
+        v = t.value.strip ("'")
+        t.value = v
+        return t
+    # end def t_STRING_SQ
 
     def t_VAR (self, t):
         r'[A-Z]+[0-9A-Z]*[!%$]?'
