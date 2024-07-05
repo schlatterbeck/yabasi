@@ -186,10 +186,14 @@ class Interpreter:
         ((c [0], c [1]) for c in print_special.values ())
     tabpos = [14, 28, 42, 56]
 
-    def __init__ (self, fn, input = None):
+    def __init__ (self, args):
+        self.args   = args
         self.input  = None
-        if input:
-            self.input = open (input, 'r')
+        self.tab    = args.tab
+        if not self.tab:
+            self.tab = self.tabpos
+        if args.input_file:
+            self.input = open (args.input_file, 'r')
         self.col    = 0
         self.lines  = {}
         self.stack  = []
@@ -209,7 +213,7 @@ class Interpreter:
         self.tokens    = tokenizer.Tokenizer.tokens
         self.parser    = yacc.yacc (module = self)
 
-        with open (fn, 'r') as f:
+        with open (args.program, 'r') as f:
             for l in f:
                 l = l.rstrip ()
                 #print (l)
@@ -485,7 +489,7 @@ class Interpreter:
                 self.col += len (v)
                 l.append (v)
             elif c == 'COMMA' and not using:
-                for tb in self.tabpos:
+                for tb in self.tab:
                     if self.col >= tb:
                         continue
                     v = ' ' * (tb - self.col)
@@ -1143,8 +1147,15 @@ def main (argv = sys.argv [1:]):
         , help = 'Line in basic where to stop in (python-) debugger'
         , type = int
         )
+    cmd.add_argument \
+        ( '-t', '--tab'
+        , help    = 'Indicate tab position, can specified multiple times'
+        , type    = int
+        , action  = 'append'
+        , default = []
+        )
     args = cmd.parse_args (argv)
-    interpreter = Interpreter (args.program, input = args.input_file)
+    interpreter = Interpreter (args)
     interpreter.break_lineno = args.break_line
     interpreter.run ()
 # end def main
