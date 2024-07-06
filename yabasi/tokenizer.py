@@ -16,6 +16,7 @@ class Tokenizer:
         , 'SIN'
         , 'SQR'
         , 'TAB'
+        , 'VAL'
         ]
     funcs = dict ((k, k) for k in funcs)
 
@@ -73,8 +74,10 @@ class Tokenizer:
         , 'GE'
         , 'NE'
         , 'LEFT'
+        , 'MID'
         , 'RIGHT'
         , 'CHR'
+        , 'STR'
         , 'COMMA'
         , 'SEMIC'
         , 'EQ'
@@ -95,8 +98,10 @@ class Tokenizer:
     t_LE      = r'<='
     t_NE      = r'(<>)|(><)'
     t_LEFT    = r'LEFT[$]'
+    t_MID     = r'MID[$]'
     t_RIGHT   = r'RIGHT[$]'
     t_CHR     = r'CHR[$]'
+    t_STR     = r'STR[$]'
     t_COMMA   = r','
     t_SEMIC   = r';'
     t_EQ      = r'='
@@ -144,6 +149,9 @@ class Tokenizer:
             t.type = self.reserved [t.value]
             return t
         if t.value == 'LEFT$' or t.value == 'RIGHT$' or t.value == 'CHR$':
+            t.type = t.value [:-1]
+            return t
+        if t.value == 'MID$' or t.value == 'STR$':
             t.type = t.value [:-1]
             return t
         return t

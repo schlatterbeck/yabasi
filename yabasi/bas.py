@@ -36,11 +36,27 @@ def fun_left (expr1, expr2):
     return expr1 [:expr2]
 # end def fun_left
 
+def fun_mid (expr1, expr2, expr3):
+    assert isinstance (expr1, str)
+    expr2 = int (expr2)
+    if expr3 is None:
+        return expr1 [expr2 - 1:]
+    else:
+        expr3 = int (expr3)
+        return expr1 [expr2 - 1:expr2 - 1+expr3]
+# end def fun_mid
+
 def fun_right (expr1, expr2):
     expr2 = int (expr2)
     assert isinstance (expr1, str)
     return expr1 [-expr2:]
 # end def fun_right
+
+def fun_str (expr):
+    if isinstance (expr, float):
+        return format_float (expr).rstrip ()
+    return str (expr)
+# end def fun_str
 
 #def _fmt_float (v, fmt = '%9f'):
 def _fmt_float (v, fmt = '{:#.9g}'):
@@ -694,6 +710,8 @@ class Interpreter:
                        | CVI LPAREN expression RPAREN
                        | CVS LPAREN expression RPAREN
                        | CHR LPAREN expression RPAREN
+                       | STR LPAREN expression RPAREN
+                       | VAL LPAREN expression RPAREN
         """
         fn = p [1].lower ()
         if fn == 'int':
@@ -706,6 +724,10 @@ class Interpreter:
             fun = fun_cvs
         elif fn == 'chr$':
             fun = fun_chr
+        elif fn == 'val':
+            fun = float
+        elif fn == 'str$':
+            fun = fun_str
         else:
             if fn == 'sgn':
                 fn = 'sign'
@@ -737,6 +759,27 @@ class Interpreter:
             return fun (p3 (), p5 ())
         p [0] = x
     # end def p_expression_function_2
+
+    def p_expression_function_2_3 (self, p):
+        """
+            expression : MID LPAREN expression COMMA expression COMMA expression RPAREN
+                       | MID LPAREN expression COMMA expression RPAREN
+        """
+        fn = p [1].lower ()
+        assert fn == 'mid$'
+        fun = fun_mid
+        p3 = p [3]
+        p5 = p [5]
+        if len (p) < 8:
+            p7 = None
+        else:
+            p7 = p [7]
+        def x ():
+            if p7 is not None:
+                return fun (p3 (), p5 (), p7 ())
+            return fun (p3 (), p5 (), None)
+        p [0] = x
+    # end def p_expression_function_3
 
     def p_expression_paren (self, p):
         """
