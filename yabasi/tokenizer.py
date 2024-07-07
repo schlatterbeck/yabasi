@@ -10,6 +10,7 @@ class Tokenizer:
         , 'COS'
         , 'CVI'
         , 'CVS'
+        , 'FRP'
         , 'INT'
         , 'LOG'
         , 'SGN'

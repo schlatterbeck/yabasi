@@ -30,6 +30,14 @@ def fun_cvs (s):
         return 0.0
 # end def fun_cvs
 
+def fun_fractional_part (expr):
+    """ This is used in the first Mininec implementation, probably
+        something that the UNIVAC BASIC at the time provided.
+        I could not find it in any BASIC function references.
+    """
+    return expr - int (expr)
+# end def fun_fractional_part
+
 def fun_left (expr1, expr2):
     expr2 = int (expr2)
     assert isinstance (expr1, str)
@@ -711,6 +719,7 @@ class Interpreter:
                        | CHR LPAREN expression RPAREN
                        | STR LPAREN expression RPAREN
                        | VAL LPAREN expression RPAREN
+                       | FRP LPAREN expression RPAREN
         """
         fn = p [1].lower ()
         if fn == 'int':
@@ -727,6 +736,8 @@ class Interpreter:
             fun = float
         elif fn == 'str$':
             fun = fun_str
+        elif fn == 'frp':
+            fun = fun_fractional_part
         else:
             if fn == 'sgn':
                 fn = 'sign'
