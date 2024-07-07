@@ -80,32 +80,32 @@ def format_float (v):
     """ Try to get float formatting right
         (or at least matching to pcbasic)
     >>> format_float (0.0)
-    ' 0 '
+    ' 0'
     >>> format_float (0.001)
-    ' .001 '
+    ' .001'
     >>> format_float (-0.001)
-    '-.001 '
+    '-.001'
     >>> format_float (2.141428111)
-    ' 2.1414281 '
+    ' 2.1414281'
     >>> format_float (4.99262212345e-03)
-    ' .00499262 '
+    ' .00499262'
     >>> format_float (42.82857111)
-    ' 42.828571 '
+    ' 42.828571'
     >>> format_float (-.9036958111)
-    '-.90369581 '
+    '-.90369581'
     >>> format_float (1.700281111E+02)
-    ' 170.02811 '
+    ' 170.02811'
     >>> format_float (.0497375)
-    ' .0497375 '
+    ' .0497375'
     >>> format_float (.07958)
-    ' .07958 '
+    ' .07958'
     >>> format_float (.0099475)
-    ' .0099475 '
+    ' .0099475'
     >>> format_float (-.16039812)
-    '-.16039812 '
+    '-.16039812'
     """
     if v == 0.0:
-        return ' 0 '
+        return ' 0'
     e = int (np.floor (np.log10 (np.abs (v))))
     x = _fmt_float (v)
     f = '{:#.8g}'
@@ -116,7 +116,6 @@ def format_float (v):
     v = _fmt_float (v, fmt = f)
     if not v.startswith ('-'):
         v = ' ' + v
-    v = v + ' '
     return v
 # end def format_float
 
