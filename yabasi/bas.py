@@ -233,6 +233,7 @@ class Interpreter:
         # Variables and dimensioned variables do not occupy the same namespace
         self.var    = {}
         self.dim    = {}
+        self.flines = {}
         self.var ['DATE$'] = str (datetime.date.today ())
         self.var ['TIME$'] = datetime.datetime.now ().strftime ('%H:%M:%S')
 
@@ -241,20 +242,37 @@ class Interpreter:
         self.parser    = yacc.yacc (module = self)
 
         with open (args.program, 'r') as f:
-            for l in f:
+            lineno = sublineno = 0
+            for fline, l in enumerate (f):
                 l = l.rstrip ()
                 #print (l)
+                if l and l [0].isnumeric ():
+                    lineno, r = l.split (None, 1)
+                    lineno = self.lineno = int (lineno)
+                    sublineno = self.sublineno = 0
+                else:
+                    sublineno += 1
+                    self.sublineno = sublineno
+                    r = l
+                self.flines [(lineno, sublineno)] = fline + 1
+                self.tokenizer.lexer.lineno    = lineno
+                self.tokenizer.lexer.sublineno = sublineno
+                self.tokenizer.lexer.fline     = fline + 1
+                # Newer versions seem to have comments starting with "'"
+                # And we now handle empty lines gracefully
+                if not l or l.lstrip ().startswith ("'"):
+                    self.tokenizer.feed ('REM')
+                    p = self.parser.parse (lexer = self.tokenizer)
+                    self.insert (p)
+                    continue
                 if l [0] == '\x1a':
                     break
-                lineno, r = l.split (None, 1)
-                lineno = self.lineno = int (lineno)
-                self.tokenizer.lexer.lineno = lineno
                 if ' ' in r:
                     a, b = r.split (None, 1)
                     if a == 'REM':
                         self.tokenizer.feed ('REM')
-                        r = self.parser.parse (lexer = self.tokenizer)
-                        self.insert (r)
+                        p = self.parser.parse (lexer = self.tokenizer)
+                        self.insert (p)
                         continue
                 self.tokenizer.feed (r)
                 r = self.parser.parse (lexer = self.tokenizer)
@@ -279,23 +297,29 @@ class Interpreter:
     # end def fun_tab
 
     def insert (self, r):
+        k = (self.lineno, self.sublineno)
         if isinstance (r, list):
-            self.lines [self.lineno] = (self.cmd_multi, r)
+            self.lines [k] = (self.cmd_multi, r)
         else:
-            self.lines [self.lineno] = r
+            self.lines [k] = r
     # end def insert
 
     def run (self):
         self.running = True
-        l = self.lineno = self.first
+        l = self.first
+        self.lineno, self.sublineno = l
         while self.running and l:
-            if self.lineno == self.break_lineno or self.break_lineno == 'all':
+            if  (  (self.sublineno == 0 and self.lineno == self.break_lineno)
+                or self.break_lineno == 'all'
+                ):
                 import pdb; pdb.set_trace ()
             self.next = self.nextline.get (l)
-            #print ('lineno: %d' % l)
+            #print ('lineno: %d.%d' % l)
             line = self.lines [l]
             line [0] (*line [1:])
-            l = self.lineno = self.next
+            l = self.next
+            if l:
+                self.lineno, self.sublineno = l
     # end def run
 
     def setvar (self, var, value):
@@ -354,14 +378,26 @@ class Interpreter:
             self.var [v] = 0
     # end def cmd_defint
 
+    def cmd_defsng (self, vars):
+        """ We ignore single precision setting, all is double
+        """
+        pass
+    # end cmd_defsng
+
     def cmd_dim (self, dimlist):
         for v, l in dimlist:
             self.dim [v] = np.zeros (l)
     # end def cmd_dim
 
     def cmd_end (self):
+        """ We treat the 'SYSTEM' command same as 'END'
+            In some Basic variants the interpreter stops on END and
+            waits for something to completely terminate, we don't do
+            this.
+        """
         self.running = False
     # end def cmd_end
+    cmd_system = cmd_end
 
     def cmd_field (self, fhandle, fieldlist):
         self.fields [fhandle] = fieldlist
@@ -377,9 +413,10 @@ class Interpreter:
             self.fors [var] = [self.next, frm, to, step, frm]
         else:
             # Skip beyond corresponding 'NEXT'
-            line = self.lines [self.lineno]
+            line = self.lines [(self.lineno, self.sublineno)]
             while line [0] != self.cmd_next or line [1] != var:
-                l = self.lineno = self.next
+                l = self.next
+                self.lineno, self.sublineno = l
                 self.next = self.nextline.get (l)
                 line = self.lines [l]
             #print ('\nSkipped to %d' % self.lineno)
@@ -401,16 +438,16 @@ class Interpreter:
 
     def cmd_gosub (self, nextline):
         self.stack.append (self.next)
-        self.next = int (nextline)
+        self.next = (int (nextline), 0)
     # end def cmd_gosub
 
     def cmd_goto (self, nextline):
-        self.next = int (nextline)
+        self.next = (int (nextline), 0)
     # end def cmd_goto
 
     def _cmd_if (self, line_or_cmd):
         if isinstance (line_or_cmd, int):
-            self.next = int (line_or_cmd)
+            self.next = (int (line_or_cmd), 0)
         elif isinstance (line_or_cmd, tuple):
             line_or_cmd [0] (*line_or_cmd [1:])
         else:
@@ -556,7 +593,11 @@ class Interpreter:
         )
 
     def p_error (self, p):
-        print ("Syntax error in input in line %s!" % self.lineno)
+        fline = self.flines [(self.lineno, self.sublineno)]
+        print \
+            ( "Syntax error in input in input line %s (%s.%s)!"
+            % (fline, self.lineno, self.sublineno)
+            )
     # end def p_error
 
     def p_start (self, p):
@@ -581,6 +622,7 @@ class Interpreter:
                              | color-statement
                              | data-statement
                              | defint-statement
+                             | defsng-statement
                              | dim-statement
                              | end-statement
                              | field-statement
@@ -607,7 +649,7 @@ class Interpreter:
 
     def p_assignment_statement (self, p):
         """
-            assignment-statement : lhs EQ expression
+            assignment-statement : lhs EQ expr
         """
         p [0] = ('assign', p [1], p [3])
     # end def p_assignment_statement
@@ -656,6 +698,13 @@ class Interpreter:
         p [0] = [p [1], p [2]]
     # end def p_defint_statement
 
+    def p_defsng_statement (self, p):
+        """
+            defsng-statement : DEFSNG varlist
+        """
+        p [0] = [p [1], p [2]]
+    # end def p_defint_statement
+
     def p_dim_statement (self, p):
         """
             dim-statement : DIM dimlist
@@ -676,9 +725,9 @@ class Interpreter:
 
     def p_dimrhs (self, p):
         """
-            dimrhs : VAR LPAREN intlist RPAREN
+            dimrhs : VAR LPAREN exprlist RPAREN
         """
-        p [0] = (p [1], [a + 1 for a in p [3]])
+        p [0] = (p [1], [int (a) + 1 for a in p [3] ()])
     # end def p_dimrhs
 
     def p_empty (self, p):
@@ -689,13 +738,14 @@ class Interpreter:
     def p_end_statement (self, p):
         """
             end-statement : END
+            end-statement : SYSTEM
         """
         p [0] = (p [1], )
     # end def p_end_statement
 
     def p_expression_literal (self, p):
         """
-            expression : literal
+            expr : literal
         """
         p1 = p [1]
         def x ():
@@ -705,21 +755,21 @@ class Interpreter:
 
     def p_expression_function (self, p):
         """
-            expression : ABS LPAREN expression RPAREN
-                       | ATN LPAREN expression RPAREN
-                       | COS LPAREN expression RPAREN
-                       | LOG LPAREN expression RPAREN
-                       | SGN LPAREN expression RPAREN
-                       | SIN LPAREN expression RPAREN
-                       | SQR LPAREN expression RPAREN
-                       | INT LPAREN expression RPAREN
-                       | TAB LPAREN expression RPAREN
-                       | CVI LPAREN expression RPAREN
-                       | CVS LPAREN expression RPAREN
-                       | CHR LPAREN expression RPAREN
-                       | STR LPAREN expression RPAREN
-                       | VAL LPAREN expression RPAREN
-                       | FRP LPAREN expression RPAREN
+            expr : ABS LPAREN expr RPAREN
+                       | ATN LPAREN expr RPAREN
+                       | COS LPAREN expr RPAREN
+                       | LOG LPAREN expr RPAREN
+                       | SGN LPAREN expr RPAREN
+                       | SIN LPAREN expr RPAREN
+                       | SQR LPAREN expr RPAREN
+                       | INT LPAREN expr RPAREN
+                       | TAB LPAREN expr RPAREN
+                       | CVI LPAREN expr RPAREN
+                       | CVS LPAREN expr RPAREN
+                       | CHR LPAREN expr RPAREN
+                       | STR LPAREN expr RPAREN
+                       | VAL LPAREN expr RPAREN
+                       | FRP LPAREN expr RPAREN
         """
         fn = p [1].lower ()
         if fn == 'int':
@@ -754,8 +804,8 @@ class Interpreter:
 
     def p_expression_function_2 (self, p):
         """
-            expression : LEFT  LPAREN expression COMMA expression RPAREN
-                       | RIGHT LPAREN expression COMMA expression RPAREN
+            expr : LEFT  LPAREN expr COMMA expr RPAREN
+                 | RIGHT LPAREN expr COMMA expr RPAREN
         """
         fn = p [1].lower ()
         if fn == 'left$':
@@ -772,8 +822,8 @@ class Interpreter:
 
     def p_expression_function_2_3 (self, p):
         """
-            expression : MID LPAREN expression COMMA expression COMMA expression RPAREN
-                       | MID LPAREN expression COMMA expression RPAREN
+            expr : MID LPAREN expr COMMA expr COMMA expr RPAREN
+                 | MID LPAREN expr COMMA expr RPAREN
         """
         fn = p [1].lower ()
         assert fn == 'mid$'
@@ -793,27 +843,27 @@ class Interpreter:
 
     def p_expression_paren (self, p):
         """
-            expression : LPAREN expression RPAREN
+            expr : LPAREN expr RPAREN
         """
         p [0] = p [2]
     # end def p_expression_paren
 
     def p_expression_twoop (self, p):
         """
-            expression : expression PLUS   expression
-                       | expression MINUS  expression
-                       | expression TIMES  expression
-                       | expression DIVIDE expression
-                       | expression MOD    expression
-                       | expression GT     expression
-                       | expression GE     expression
-                       | expression LT     expression
-                       | expression LE     expression
-                       | expression NE     expression
-                       | expression EQ     expression
-                       | expression AND    expression
-                       | expression OR     expression
-                       | expression EXPO   expression
+            expr : expr PLUS   expr
+                 | expr MINUS  expr
+                 | expr TIMES  expr
+                 | expr DIVIDE expr
+                 | expr MOD    expr
+                 | expr GT     expr
+                 | expr GE     expr
+                 | expr LT     expr
+                 | expr LE     expr
+                 | expr NE     expr
+                 | expr EQ     expr
+                 | expr AND    expr
+                 | expr OR     expr
+                 | expr EXPO   expr
         """
         f1 = p [1]
         f3 = p [3]
@@ -864,7 +914,7 @@ class Interpreter:
 
     def p_expression_unaryminus (self, p):
         """
-            expression : MINUS expression
+            expr : MINUS expr
         """
         p2 = p [2]
         def x ():
@@ -885,7 +935,7 @@ class Interpreter:
 
     def p_expression_var (self, p):
         """
-            expression : VAR
+            expr : VAR
         """
         p1 = p [1]
         p [0] = self._var_helper (p1)
@@ -893,7 +943,7 @@ class Interpreter:
 
     def p_expression_var_complex (self, p):
         """
-            expression : VAR LPAREN exprlist RPAREN
+            expr : VAR LPAREN exprlist RPAREN
         """
         p1 = p [1]
         p3 = p [3]
@@ -905,8 +955,8 @@ class Interpreter:
 
     def p_exprlist (self, p):
         """
-            exprlist : expression
-                     | exprlist COMMA expression
+            exprlist : expr
+                     | exprlist COMMA expr
         """
         p1 = p [1]
         if len (p) == 2:
@@ -939,14 +989,14 @@ class Interpreter:
 
     def p_for_statement (self, p):
         """
-            for-statement : FOR VAR EQ expression TO expression
+            for-statement : FOR VAR EQ expr TO expr
         """
         p [0] = (p [1], p [2], p [4], p [6])
     # end def p_for_statement
 
     def p_for_statement_step (self, p):
         """
-            for-statement : FOR VAR EQ expression TO expression STEP expression
+            for-statement : FOR VAR EQ expr TO expr STEP expr
         """
         p [0] = (p [1], p [2], p [4], p [6], p [8])
     # end def p_for_statement_step
@@ -974,12 +1024,12 @@ class Interpreter:
 
     def p_if_statement (self, p):
         """
-            if-statement : IF expression THEN NUMBER
-                         | IF expression THEN NUMBER ELSE NUMBER
-                         | IF expression THEN NUMBER ELSE statement
-                         | IF expression THEN statement
-                         | IF expression THEN statement ELSE NUMBER
-                         | IF expression THEN statement ELSE statement
+            if-statement : IF expr THEN NUMBER
+                         | IF expr THEN NUMBER ELSE NUMBER
+                         | IF expr THEN NUMBER ELSE statement
+                         | IF expr THEN statement
+                         | IF expr THEN statement ELSE NUMBER
+                         | IF expr THEN statement ELSE statement
         """
         if len (p) == 5:
             p [0] = [p [1], p [2], p [4]]
@@ -989,7 +1039,7 @@ class Interpreter:
 
     def p_if_statement_without_then (self, p):
         """
-            if-statement : IF expression GOTO NUMBER
+            if-statement : IF expr GOTO NUMBER
         """
         p [0] = [p [1], p [2], p [4]]
     # end def p_if_statement_without_then
@@ -1076,23 +1126,31 @@ class Interpreter:
 
     def p_ongoto_statement (self, p):
         """
-            ongoto-statement : ON expression GOTO intlist
+            ongoto-statement : ON expr GOTO intlist
         """
         p [0] = ('ongoto', p [2], p [4])
     # end def p_ongoto_statement
 
     def p_open_statement (self, p):
         """
-            open-statement : OPEN expression FOR OUTPUT AS FHANDLE
+            open-statement : OPEN expr FOR OUTPUT AS FHANDLE
         """
         p [0] = (p [1], p [2], p [6])
     # end def p_open_statement
 
     def p_open_statement_read (self, p):
         """
-            open-statement : OPEN expression AS FHANDLE LEN EQ expression
+            open-statement : OPEN expr AS FHANDLE LEN EQ expr
+                           | OPEN expr FOR RANDOM AS FHANDLE LEN EQ expr
         """
-        p [0] = ('open_read', p [2], p [4], p [7])
+        expr = p [2]
+        if len (p) == 8:
+            fhandle = p [4]
+            length  = p [7]
+        else:
+            fhandle = p [6]
+            length  = p [9]
+        p [0] = ('open_read', expr, fhandle, length)
     # end def p_open_statement_read
 
     def p_print_statement (self, p):
@@ -1112,10 +1170,10 @@ class Interpreter:
     def p_printlist (self, p):
         """
             printlist : empty
-                      | expression
-                      | printlist SEMIC expression
-                      | printlist COMMA expression
-                      | printlist expression
+                      | expr
+                      | printlist SEMIC expr
+                      | printlist COMMA expr
+                      | printlist expr
                       | printlist SEMIC
                       | printlist COMMA
         """
@@ -1168,12 +1226,26 @@ class Interpreter:
     def p_varlist (self, p):
         """
             varlist : varlist COMMA VAR
+                    | varlist MINUS VAR
                     | VAR
         """
         if len (p) == 2:
             p [0] = [p [1]]
         else:
-            p [0] = p [1] + [p [3]]
+            if p [2] == '-':
+                var = p [1][-1]
+                if len (var) > 1 or len (p [3]) > 1:
+                    self.p_error (None)
+                    p [0] = p [1]
+                    return
+                l   = p [1][:]
+                s   = ord (var)
+                e   = ord (p [3])
+                for i in range (e - s):
+                    l.append (chr (s + i + 1))
+                p [0] = l
+            else:
+                p [0] = p [1] + [p [3]]
     # end def p_varlist
 
     def p_varlist_complex (self, p):
