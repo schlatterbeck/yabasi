@@ -385,7 +385,8 @@ class Interpreter:
     # end cmd_defsng
 
     def cmd_dim (self, dimlist):
-        for v, l in dimlist:
+        for dentry in dimlist:
+            v, l = dentry ()
             self.dim [v] = np.zeros (l)
     # end def cmd_dim
 
@@ -727,7 +728,11 @@ class Interpreter:
         """
             dimrhs : VAR LPAREN exprlist RPAREN
         """
-        p [0] = (p [1], [int (a) + 1 for a in p [3] ()])
+        p1 = p [1]
+        p3 = p [3]
+        def x ():
+            return (p1, [int (a) + 1 for a in p3 ()])
+        p [0] = x
     # end def p_dimrhs
 
     def p_empty (self, p):
@@ -1096,7 +1101,11 @@ class Interpreter:
                     | STRING_DQ
                     | STRING_SQ
         """
-        p [0] = p [1]
+        copro = '{math co-processor}'
+        if isinstance (p [1], str) and copro in p [1]:
+            p [0] = p [1].replace (copro, '*******************')
+        else:
+            p [0] = p [1]
     # end def p_literal
 
     def p_literal_list (self, p):
