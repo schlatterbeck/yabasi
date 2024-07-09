@@ -204,6 +204,112 @@ class Print_Using:
 
 # end class Print_Using
 
+class Exec_Stack:
+    """ Stack holding multiline IF/ELSE and FOR/NEXT info
+    """
+
+    def __init__ (self):
+        self.stack     = []
+        self.xq_cached = None
+    # end def __init__
+
+    def __bool__ (self):
+        return bool (self.stack)
+    # end def __bool__
+
+    def __iter__ (self):
+        for entry in reversed (self.stack):
+            yield entry
+    # end def __iter__
+
+    @property
+    def exec_condition (self):
+        if self.xq_cached is not None:
+            return self.xq_cached
+        for stack_entry in self.stack:
+            if not stack_entry.condition:
+                self.xq_cached = False
+                return False
+        self.xq_cached = True
+        return True
+    # end exec_condition
+
+    @property
+    def top (self):
+        return self.stack [-1]
+    # end def top
+
+    def pop (self):
+        self.xq_cached = None
+        return self.stack.pop ()
+    # end def pop
+
+    def push (self, item):
+        self.xq_cached = None
+        self.stack.append (item)
+    # end def push
+
+# end class
+
+class Stack_Entry:
+    """ We stack FOR/NEXT and IF/ELSE
+        While a condition is False we just skip commands but we still
+        *do* pick up FOR loops and multi-line IF/ELSE
+    """
+
+    def __init__ (self, parent, condition):
+        self.parent    = parent
+        self.condition = condition
+    # end def __init__
+
+# end class Stack_Entry
+
+class Stack_Entry_For (Stack_Entry):
+
+    def __init__ (self, parent, condition, var, frm, to, step):
+        super ().__init__ (parent, condition)
+        self.var   = var
+        self.start = parent.next
+        self.frm   = frm
+        self.count = frm
+        self.to    = to
+        self.step  = step
+    # end def __init__
+
+    def handle_next (self):
+        assert self.parent.stack.top == self
+        self.count += self.step
+        self.parent.setvar (self.var, self.count)
+        if  (  self.step > 0 and self.count <= self.to
+            or self.step < 0 and self.count >= self.to
+            ):
+            self.parent.next = self.start
+        else:
+            self.parent.stack.pop ()
+            #print ('NEXT pop')
+    # end def handle_next
+
+# end class Stack_Entry_For
+
+class Stack_Entry_If (Stack_Entry):
+    """ Model a multi-line IF/ELSE/END IF
+    """
+
+    def __init__ (self, parent, condition):
+        super ().__init__ (parent, condition)
+        self.else_seen = False
+    # end def __init__
+
+    def handle_else (self):
+        if self.else_seen:
+            self.parent.raise_error ('Duplicate ELSE clause')
+            return
+        self.else_seen = True
+        self.condition = not self.condition
+    # end def handle_else
+
+# end class Stack_Entry_If
+
 class Interpreter:
     print_special = \
         { ',' : ('++,++', 'COMMA')
@@ -213,6 +319,8 @@ class Interpreter:
         ((c [0], c [1]) for c in print_special.values ())
     tabpos = [14, 28, 42, 56]
 
+    skip_mode_commands = set (('if_start', 'else', 'endif', 'for', 'next'))
+
     def __init__ (self, args):
         self.args   = args
         self.input  = None
@@ -221,19 +329,20 @@ class Interpreter:
             self.tab = self.tabpos
         if args.input_file:
             self.input = open (args.input_file, 'r')
-        self.col    = 0
-        self.lines  = {}
-        self.stack  = []
-        self.fors   = {}
-        self.files  = {}
-        self.data   = []
-        self.reclen = {}
-        self.fields = {}
-        self.defint = {}
+        self.col      = 0
+        self.lines    = {}
+        self.stack    = Exec_Stack ()
+        self.gstack   = [] # gosub
+        self.files    = {}
+        self.data     = []
+        self.reclen   = {}
+        self.fields   = {}
+        self.defint   = {}
+        self.err_seen = False
         # Variables and dimensioned variables do not occupy the same namespace
-        self.var    = {}
-        self.dim    = {}
-        self.flines = {}
+        self.var      = {}
+        self.dim      = {}
+        self.flines   = {}
         self.var ['DATE$'] = str (datetime.date.today ())
         self.var ['TIME$'] = datetime.datetime.now ().strftime ('%H:%M:%S')
 
@@ -289,6 +398,18 @@ class Interpreter:
         self.break_lineno = None
     # end def __init__
 
+    @property
+    def exec_condition (self):
+        return self.stack.exec_condition
+    # end def exec_condition
+
+    @property
+    def fline (self):
+        if not getattr (self, 'lineno', None):
+            return None
+        return self.flines [(self.lineno, self.sublineno)]
+    # end def fline
+
     def fun_tab (self, expr):
         # We print *at* the tab position
         expr     = int (expr) - 1
@@ -304,7 +425,18 @@ class Interpreter:
             self.lines [k] = r
     # end def insert
 
+    def raise_error (self, errmsg):
+        print \
+            ( 'Error: %s in line %s (%s.%s)'
+            % (errmsg, self.fline, self.lineno, self.sublineno)
+            , file = sys.stderr
+            )
+        self.err_seen = True
+    # end def raise_error
+
     def run (self):
+        if self.err_seen:
+            return
         self.running = True
         l = self.first
         self.lineno, self.sublineno = l
@@ -316,7 +448,9 @@ class Interpreter:
             self.next = self.nextline.get (l)
             #print ('lineno: %d.%d' % l)
             line = self.lines [l]
-            line [0] (*line [1:])
+            name = line [0].__name__.split ('_', 1) [-1]
+            if self.exec_condition or name in self.skip_mode_commands:
+                line [0] (*line [1:])
             l = self.next
             if l:
                 self.lineno, self.sublineno = l
@@ -390,6 +524,19 @@ class Interpreter:
             self.dim [v] = np.zeros (l)
     # end def cmd_dim
 
+    def _ifclause_check (self):
+        if not self.stack:
+            self.raise_error ('ELSE without IF')
+        if not isinstance (self.stack.top, Stack_Entry_If):
+            self.raise_error ('ELSE without IF')
+        return self.stack.top
+    # end def _ifclause_check
+
+    def cmd_else (self):
+        top = self._ifclause_check ()
+        top.handle_else ()
+    # end def cmd_else
+
     def cmd_end (self):
         """ We treat the 'SYSTEM' command same as 'END'
             In some Basic variants the interpreter stops on END and
@@ -400,27 +547,39 @@ class Interpreter:
     # end def cmd_end
     cmd_system = cmd_end
 
+    def cmd_endif (self):
+        self._ifclause_check ()
+        self.stack.pop ()
+    # end def cmd_endif
+
     def cmd_field (self, fhandle, fieldlist):
         self.fields [fhandle] = fieldlist
     # end def cmd_field
 
     def cmd_for (self, var, frm, to, step = 1):
+        #print ('FOR command: %s %s' % (var, self.fline))
         frm = frm ()
         to  = to  ()
         if step != 1:
             step = step ()
-        self.setvar (var, frm)
-        if (step > 0 and frm <= to) or (step < 0 and frm >= to):
-            self.fors [var] = [self.next, frm, to, step, frm]
-        else:
-            # Skip beyond corresponding 'NEXT'
-            line = self.lines [(self.lineno, self.sublineno)]
-            while line [0] != self.cmd_next or line [1] != var:
-                l = self.next
-                self.lineno, self.sublineno = l
-                self.next = self.nextline.get (l)
-                line = self.lines [l]
-            #print ('\nSkipped to %d' % self.lineno)
+        cond = self.exec_condition
+        # Search backward on stack if we have the same FOR
+        found = False
+        for n, entry in enumerate (self.stack):
+            if not isinstance (entry, Stack_Entry_For):
+                break
+            if entry.var == var:
+                found = True
+                break
+        if found:
+            for k in range (n + 1):
+                #print ('POP: %s' % self.stack.top.var)
+                self.stack.pop ()
+        if self.exec_condition:
+            self.setvar (var, frm)
+            cond = (step > 0 and frm <= to) or (step < 0 and frm >= to)
+        stack_entry = Stack_Entry_For (self, cond, var, frm, to, step)
+        self.stack.push (stack_entry)
     # end def cmd_for
 
     def cmd_get (self, num):
@@ -438,7 +597,7 @@ class Interpreter:
     # end def cmd_get
 
     def cmd_gosub (self, nextline):
-        self.stack.append (self.next)
+        self.gstack.append (self.next)
         self.next = (int (nextline), 0)
     # end def cmd_gosub
 
@@ -462,6 +621,11 @@ class Interpreter:
         elif line_or_cmd2 is not None:
             self._cmd_if (line_or_cmd2)
     # end def cmd_if
+
+    def cmd_if_start (self, expr):
+        cond = self.exec_condition and expr ()
+        self.stack.push (Stack_Entry_If (self, cond))
+    # end def cmd_if_start
 
     def cmd_input (self, vars, s = ''):
         prompt = s + ': '
@@ -491,18 +655,18 @@ class Interpreter:
     # end def cmd_multi
 
     def cmd_next (self, var):
-        fors = self.fors [var]
-        # Add step
-        fors [-1] += fors [3]
-        self.setvar (var, fors [-1])
-        #print ('NEXT: %s = %s' % (var, fors [-1]))
-        if  (  (fors [3] > 0 and fors [-1] <= fors [2])
-            or (fors [3] < 0 and fors [-1] >= fors [2])
-            ):
-            self.next = fors [0]
-        else:
-            del self.fors [var]
-            #print ('\nNEXT: %s DONE' % (var,))
+        #print ('NEXT command: %s %s' % (var, self.fline))
+        if not self.stack:
+            self.raise_error ('NEXT without FOR')
+            return
+        top = self.stack.top
+        if not isinstance (top, Stack_Entry_For):
+            self.raise_error ('NEXT in unterminated IF statement')
+            return
+        if top.var != var:
+            self.raise_error ('NEXT %s in FOR %s' % (var, top.var))
+            return
+        top.handle_next ()
     # end def cmd_next
 
     def cmd_ongoto (self, expr, lines):
@@ -583,7 +747,7 @@ class Interpreter:
     # end def cmd_rem
 
     def cmd_return (self):
-        self.next = self.stack.pop ()
+        self.next = self.gstack.pop ()
     # end def cmd_return
 
     # PRODUCTIONS OF PARSER
@@ -597,10 +761,9 @@ class Interpreter:
         )
 
     def p_error (self, p):
-        fline = self.flines [(self.lineno, self.sublineno)]
         print \
             ( "Syntax error in input in input line %s (%s.%s)!"
-            % (fline, self.lineno, self.sublineno)
+            % (self.fline, self.lineno, self.sublineno)
             )
     # end def p_error
 
@@ -628,6 +791,8 @@ class Interpreter:
                              | defint-statement
                              | defsng-statement
                              | dim-statement
+                             | else-statement
+                             | endif-statement
                              | end-statement
                              | field-statement
                              | for-statement
@@ -635,6 +800,7 @@ class Interpreter:
                              | gosub-statement
                              | goto-statement
                              | if-statement
+                             | if-start-statement
                              | input-statement
                              | locate-statement
                              | next-statement
@@ -738,6 +904,13 @@ class Interpreter:
         p [0] = x
     # end def p_dimrhs
 
+    def p_else (self, p):
+        """
+            else-statement : ELSE
+        """
+        p [0] = [p [1]]
+    # end def p_else
+
     def p_empty (self, p):
         'empty :'
         pass
@@ -750,6 +923,13 @@ class Interpreter:
         """
         p [0] = (p [1], )
     # end def p_end_statement
+
+    def p_endif_statement (self, p):
+        """
+            endif-statement : END IF
+        """
+        p [0] = ['endif']
+    # end def p_endif_statement
 
     def p_expression_literal (self, p):
         """
@@ -1030,6 +1210,13 @@ class Interpreter:
         p [0] = [p [1], p [2]]
     # end def p_gosub_statement
 
+    def p_if_start (self, p):
+        """
+            if-start-statement : IF expr THEN
+        """
+        p [0] = ['if_start', p [2]]
+    # end def p_if_start
+
     def p_if_statement (self, p):
         """
             if-statement : IF expr THEN NUMBER
@@ -1247,8 +1434,12 @@ class Interpreter:
         else:
             if p [2] == '-':
                 var = p [1][-1]
-                if len (var) > 1 or len (p [3]) > 1:
-                    self.p_error (None)
+                if len (var) > 1:
+                    self.raise_error ('Variable name "%s" too long' % var)
+                    p [0] = p [1]
+                    return
+                if len (p [3]) > 1:
+                    self.raise_error ('Variable name "%s" too long' % p [3])
                     p [0] = p [1]
                     return
                 l   = p [1][:]
