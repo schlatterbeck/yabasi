@@ -281,7 +281,7 @@ class Stack_Entry_For (Stack_Entry):
     def handle_next (self):
         assert self.parent.stack.top == self
         self.count += self.step
-        self.parent.setvar (self.var, self.count)
+        self.parent.var [self.var] = self.count
         if  (  self.step > 0 and self.count <= self.to
             or self.step < 0 and self.count >= self.to
             ):
@@ -312,6 +312,55 @@ class Stack_Entry_If (Stack_Entry):
     # end def handle_else
 
 # end class Stack_Entry_If
+
+class L_Value:
+    def value (self, v):
+        if self.name.endswith ('%'):
+            v = int (v)
+        elif not self.name.endswith ('$'):
+            v = float (v)
+        return v
+    # end def value
+# end class L_Value
+
+class L_Value_Var (L_Value):
+
+    def __init__ (self, parent, name):
+        self.parent = parent
+        self.name   = name
+    # end def __init__
+
+    def get (self):
+        if self.name not in self.parent.var:
+            return None
+        return self.parent.var [self.name]
+    # end def get
+
+    def set (self, value):
+        self.parent.var [self.name] = self.value (value)
+    # end def set
+
+# end class L_Value_Var
+
+class L_Value_Dim (L_Value):
+
+    def __init__ (self, parent, dim, expr):
+        self.parent = parent
+        self.expr   = [int (x) for x in expr]
+        self.name   = dim
+    # end def __init__
+
+    def get (self):
+        if self.name not in self.parent.dim:
+            return None
+        return self.parent.dim [self.name][*self.expr]
+    # end def get
+
+    def set (self, v):
+        self.parent.dim [self.name][*self.expr] = self.value (v)
+    # end def set
+
+# end class L_Value_Dim
 
 class Interpreter:
     print_special = \
@@ -428,6 +477,16 @@ class Interpreter:
             self.lines [k] = r
     # end def insert
 
+    def lset_rset_mid_paramcheck (var, expr):
+        if not isinstance (expr, str):
+            self.raise_error ('Non-string expression')
+            return (None, None)
+        if not var.name.endswith ('$'):
+            self.raise_error ('Non-string variable "%s"' % var)
+            return (None, None)
+        return (var.get (), expr)
+    # end def lset_rset_mid_paramcheck
+
     def raise_error (self, errmsg):
         print \
             ( 'Error: %s in line %s (%s.%s)'
@@ -462,25 +521,14 @@ class Interpreter:
                 self.lineno, self.sublineno = l
     # end def run
 
-    def setvar (self, var, value):
-        if callable (var):
-            var (value)
-        else:
-            if var.endswith ('%') or var in self.defint:
-                value = int (value)
-            if not var.endswith ('$'):
-                value = float (value)
-            self.var [var] = value
-    # end def setvar
-
     # COMMANDS
 
-    def cmd_assign (self, var, expr):
+    def cmd_assign (self, lhs, expr):
         if callable (expr):
             result = expr ()
         else:
             result = expr
-        self.setvar (var, result)
+        lhs ().set (result)
     # end def cmd_assign
 
     def cmd_close (self, fhandle = None):
@@ -582,7 +630,7 @@ class Interpreter:
                 #print ('POP: %s' % self.stack.top.var)
                 self.stack.pop ()
         if self.exec_condition:
-            self.setvar (var, frm)
+            self.var [var] = frm
             cond = (step > 0 and frm <= to) or (step < 0 and frm >= to)
         stack_entry = Stack_Entry_For (self, cond, var, frm, to, step)
         self.stack.push (stack_entry)
@@ -642,17 +690,43 @@ class Interpreter:
         else:
             value = input (prompt)
         if len (vars) > 1:
-            for var, v in zip (vars, value.split (',')):
-                self.setvar (var, v)
+            for lhs, v in zip (vars, value.split (',')):
+                lhs ().set (v)
         else:
-            var = vars [0]
-            self.setvar (vars [0], value)
+            lhs = vars [0] ()
+            lhs.set (value)
     # end def cmd_input
 
     def cmd_locate (self, num):
         """ Probably positions cursor """
         print ('\r', end = '')
     # end def cmd_locate
+
+    def cmd_lset (self, lhs, expr):
+        v, expr = self.lset_rset_mid_paramcheck (lhs, expr)
+        if v is None or expr is None:
+            return
+        if len (expr) < len (v):
+            expr += ' ' * (len (v) - len (expr))
+        if len (expr) > len (v):
+            expr = expr [:len (v)]
+        lhs.set (expr)
+    # end def cmd_lset
+
+    def cmd_mid (self, lhs, pos, length, expr):
+        v, expr = self.lset_rset_mid_paramcheck (lhs, expr)
+        if v is None or expr is None:
+            return
+        if pos + length > len (v):
+            length = len (v) - pos
+        if length <= 0:
+            return
+        if len (expr) > length:
+            expr = expr [:length]
+        if len (expr) < length:
+            length = len (expr)
+        lhs.set (v [:pos] + expr + v [pos + length:])
+    # end def cmd_lset
 
     def cmd_multi (self, l):
         """ Multiple commands separated by colon """
@@ -743,9 +817,9 @@ class Interpreter:
     # end def cmd_print
 
     def cmd_read (self, vars):
-        for var in vars:
+        for lhs in vars:
             result = self.data.pop (0)
-            self.setvar (var, result)
+            lhs ().set (result)
     # end def cmd_read
 
     def cmd_rem (self):
@@ -755,6 +829,17 @@ class Interpreter:
     def cmd_return (self):
         self.next = self.gstack.pop ()
     # end def cmd_return
+
+    def cmd_rset (self, lhs, expr):
+        v, expr = self.lset_rset_mid_paramcheck (lhs, expr)
+        if v is None or expr is None:
+            return
+        if len (expr) < len (v):
+            expr = ' ' * (len (v) - len (expr)) + expr
+        if len (expr) > len (v):
+            expr = expr [:len (v)]
+        lhs.set (expr)
+    # end def cmd_rset
 
     def cmd_write (self, fhandle, exprs):
         file = sys.stdout
@@ -827,6 +912,9 @@ class Interpreter:
                              | rem-statement
                              | return-statement
                              | write-statement
+                             | lset-statement
+                             | rset-statement
+                             | mid-statement
 
         """
         cmd = p [1][0]
@@ -1287,19 +1375,16 @@ class Interpreter:
             lhs : VAR
                 | VAR LPAREN exprlist RPAREN
         """
+        p1 = p [1]
         if len (p) == 2:
-            p [0] = p [1]
+            def x ():
+                return L_Value_Var (self, p1)
         else:
-            p1 = p [1]
             p3 = p [3]
-            def x (v):
+            def x ():
                 r = [int (k) for k in p3 ()]
-                if p1.endswith ('%'):
-                    v = int (v)
-                elif not p1.endswith ('$'):
-                    v = float (v)
-                self.dim [p1][*r] = v
-            p [0] = x
+                return L_Value_Dim (self, p1, r)
+        p [0] = x
     # end def p_lhs
 
     def p_literal (self, p):
@@ -1332,6 +1417,24 @@ class Interpreter:
         """
         p [0] = (p [1], p [4])
     # end def p_locate_statement
+
+    def p_lset_statement (self, p):
+        """
+            lset-statement : LSET lhs EQ expr
+        """
+        p [0] = (p [1], p [2], p [4])
+    # end def p_lset_statement
+
+    def p_mid_statement (self, p):
+        """
+            mid-statement : MID LPAREN lhs COMMA expr COMMA expr RPAREN EQ expr
+                          | MID LPAREN lhs COMMA expr RPAREN EQ expr
+        """
+        if len (p) == 9:
+            p [0] = (p [1], p [3], p [5], None, p [8])
+        else:
+            p [0] = (p [1], p [3], p [5], p [7], p [10])
+    # end def p_mid_statement
 
     def p_next_statement (self, p):
         """
@@ -1439,6 +1542,13 @@ class Interpreter:
         """
         p [0] = [p [1]]
     # end def p_return_statement
+
+    def p_rset_statement (self, p):
+        """
+            rset-statement : RSET lhs EQ expr
+        """
+        p [0] = (p [1], p [2], p [4])
+    # end def p_rset_statement
 
     def p_varlist (self, p):
         """
