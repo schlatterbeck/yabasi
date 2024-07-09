@@ -23,6 +23,7 @@ class Tokenizer:
 
     reserved = \
         [ 'AND'
+        , 'APPEND'
         , 'AS'
         , 'CLOSE'
         , 'CLS'

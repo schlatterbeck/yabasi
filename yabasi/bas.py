@@ -510,13 +510,16 @@ class Interpreter:
         self.next = lines [expr]
     # end def cmd_ongoto
 
-    def cmd_open (self, expr, fhandle):
+    def cmd_open (self, expr, forwhat, fhandle):
         expr = expr ()
         assert isinstance (expr, str)
         if expr == 'SCRN:':
             self.files [fhandle] = sys.stdout
         else:
-            self.files [fhandle] = open (expr, 'w')
+            open_arg = 'w'
+            if forwhat.lower () == 'append':
+                open_arg = 'a'
+            self.files [fhandle] = open (expr, open_arg)
     # end def cmd_open
 
     def cmd_open_read (self, expr, fhandle, len_expr):
@@ -1143,8 +1146,9 @@ class Interpreter:
     def p_open_statement (self, p):
         """
             open-statement : OPEN expr FOR OUTPUT AS FHANDLE
+                           | OPEN expr FOR APPEND AS FHANDLE
         """
-        p [0] = (p [1], p [2], p [6])
+        p [0] = (p [1], p [2], p [4], p [6])
     # end def p_open_statement
 
     def p_open_statement_read (self, p):
