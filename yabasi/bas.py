@@ -1258,10 +1258,10 @@ class Interpreter:
 
     def p_input_statement (self, p):
         """
-            input-statement : INPUT STRING_SQ SEMIC VAR
-                            | INPUT STRING_DQ SEMIC VAR
+            input-statement : INPUT STRING_SQ SEMIC varlist-complex
+                            | INPUT STRING_DQ SEMIC varlist-complex
         """
-        p [0] = (p [1], [p [4]], p [2])
+        p [0] = (p [1], p [4], p [2])
     # end def p_input_statement
 
     def p_input_statement_multi (self, p):
