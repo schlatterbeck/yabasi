@@ -247,6 +247,7 @@ class Exec_Stack:
     def push (self, item):
         self.xq_cached = None
         self.stack.append (item)
+        item.stack = self
     # end def push
 
 # end class
@@ -260,6 +261,7 @@ class Stack_Entry:
     def __init__ (self, parent, condition):
         self.parent    = parent
         self.condition = condition
+        self.stack     = None
     # end def __init__
 
 # end class Stack_Entry
@@ -306,6 +308,7 @@ class Stack_Entry_If (Stack_Entry):
             return
         self.else_seen = True
         self.condition = not self.condition
+        self.stack.xq_cached = None
     # end def handle_else
 
 # end class Stack_Entry_If
@@ -753,6 +756,16 @@ class Interpreter:
         self.next = self.gstack.pop ()
     # end def cmd_return
 
+    def cmd_write (self, fhandle, exprs):
+        file = sys.stdout
+        if fhandle is not None:
+            file = self.files [fhandle]
+        r    = []
+        for ex in exprs ():
+            r.append (repr (ex))
+        print (','.join (r), end = '\r\n', file = file)
+    # end def cmd_write
+
     # PRODUCTIONS OF PARSER
 
     precedence = \
@@ -813,6 +826,7 @@ class Interpreter:
                              | read-statement
                              | rem-statement
                              | return-statement
+                             | write-statement
 
         """
         cmd = p [1][0]
@@ -1465,6 +1479,17 @@ class Interpreter:
         else:
             p [0] = p [1] + [p [3]]
     # end def p_varlist_complex
+
+    def p_write (self, p):
+        """
+            write-statement : WRITE FHANDLE COMMA exprlist
+                            | WRITE exprlist
+        """
+        if len (p) == 5:
+            p [0] = [p [1], p [2], p [4]]
+        else:
+            p [0] = [p [1], None, p [4]]
+    # end def p_write
 
 # end class Interpreter
 
