@@ -448,6 +448,9 @@ class Interpreter:
             self.next = self.nextline.get (l)
             #print ('lineno: %d.%d' % l)
             line = self.lines [l]
+            if line is None:
+                self.raise_error ('Uncompiled line')
+                return
             name = line [0].__name__.split ('_', 1) [-1]
             if self.exec_condition or name in self.skip_mode_commands:
                 line [0] (*line [1:])
