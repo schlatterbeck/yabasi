@@ -242,7 +242,7 @@ class Interpreter:
         self.parser    = yacc.yacc (module = self)
 
         with open (args.program, 'r') as f:
-            lineno = sublineno = 0
+            lineno = self.lineno = sublineno = 0
             for fline, l in enumerate (f):
                 l = l.rstrip ()
                 #print (l)
@@ -253,7 +253,7 @@ class Interpreter:
                 else:
                     sublineno += 1
                     self.sublineno = sublineno
-                    r = l
+                    r = l.lstrip ()
                 self.flines [(lineno, sublineno)] = fline + 1
                 self.tokenizer.lexer.lineno    = lineno
                 self.tokenizer.lexer.sublineno = sublineno
