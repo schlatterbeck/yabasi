@@ -21,6 +21,8 @@ def fun_cvi (s):
     if isinstance (s, str):
         s = s.encode ('ascii')
     if isinstance (s, bytes):
+        if not len (s):
+            return 0
         return struct.unpack ('<h', s)[0]
     try:
         return int (s)
@@ -32,6 +34,8 @@ def fun_cvs (s):
     if isinstance (s, str):
         s = s.encode ('ascii')
     if isinstance (s, bytes):
+        if not len (s):
+            return 0
         return struct.unpack ('<f', s)[0]
     try:
         return float (s)
@@ -719,7 +723,10 @@ class Interpreter:
             for l, lhs in fl:
                 lhs ().set ('')
         else:
-            r = self.files [fh].read (self.reclen [fh])
+            try:
+                r = self.files [fh].read (self.reclen [fh])
+            except IOError:
+                r = b''
             off = 0
             for l, lhs in fl:
                 lhs ().set (r [off:off+l])
