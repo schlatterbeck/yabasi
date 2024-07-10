@@ -6,6 +6,7 @@ import numpy as np
 import re
 import sys
 import datetime
+import struct
 from . import tokenizer
 
 def fun_chr (expr):
@@ -17,6 +18,10 @@ def fun_chr (expr):
 # end def fun_chr
 
 def fun_cvi (s):
+    if isinstance (s, str):
+        s = s.encode ('ascii')
+    if isinstance (s, bytes):
+        return struct.unpack ('<h', s)[0]
     try:
         return int (s)
     except ValueError:
@@ -24,6 +29,10 @@ def fun_cvi (s):
 # end def fun_cvi
 
 def fun_cvs (s):
+    if isinstance (s, str):
+        s = s.encode ('ascii')
+    if isinstance (s, bytes):
+        return struct.unpack ('<f', s)[0]
     try:
         return float (s)
     except ValueError:
@@ -53,6 +62,16 @@ def fun_mid (expr1, expr2, expr3):
         expr3 = int (expr3)
         return expr1 [expr2 - 1:expr2 - 1+expr3]
 # end def fun_mid
+
+def fun_mki (expr):
+    i = int (expr)
+    return struct.pack ('<h', i)
+# end def fun_mki
+
+def fun_mks (expr):
+    f = float (expr)
+    return struct.pack ('<f', f)
+# end def fun_mks
 
 def fun_right (expr1, expr2):
     expr2 = int (expr2)
@@ -362,6 +381,14 @@ class L_Value_Dim (L_Value):
 
 # end class L_Value_Dim
 
+def to_fhandle (x):
+    if not isinstance (x, str):
+        x = '#%d' % int (x)
+    if not x.startswith ('#'):
+        x = '#' + x
+    return x
+# end def to_fhandle
+
 class Interpreter:
     print_special = \
         { ',' : ('++,++', 'COMMA')
@@ -477,14 +504,15 @@ class Interpreter:
             self.lines [k] = r
     # end def insert
 
-    def lset_rset_mid_paramcheck (var, expr):
-        if not isinstance (expr, str):
+    def lset_rset_mid_paramcheck (self, lhs, expr):
+        if not isinstance (expr, (str, bytes)):
+            import pdb; pdb.set_trace ()
             self.raise_error ('Non-string expression')
             return (None, None)
-        if not var.name.endswith ('$'):
-            self.raise_error ('Non-string variable "%s"' % var)
+        if not lhs.name.endswith ('$'):
+            self.raise_error ('Non-string variable "%s"' % lhs.name)
             return (None, None)
-        return (var.get (), expr)
+        return (lhs.get (), expr)
     # end def lset_rset_mid_paramcheck
 
     def raise_error (self, errmsg):
@@ -502,7 +530,7 @@ class Interpreter:
         self.running = True
         l = self.first
         self.lineno, self.sublineno = l
-        while self.running and l:
+        while self.running and not self.err_seen and l:
             if  (  (self.sublineno == 0 and self.lineno == self.break_lineno)
                 or self.break_lineno == 'all'
                 ):
@@ -515,7 +543,12 @@ class Interpreter:
                 return
             name = line [0].__name__.split ('_', 1) [-1]
             if self.exec_condition or name in self.skip_mode_commands:
-                line [0] (*line [1:])
+                try:
+                    line [0] (*line [1:])
+                except \
+                    (ZeroDivisionError, ValueError, KeyError, IndexError) \
+                    as err:
+                    self.raise_error (err)
             l = self.next
             if l:
                 self.lineno, self.sublineno = l
@@ -541,8 +574,7 @@ class Interpreter:
                     self.files [fh].close ()
             self.files = {}
             return
-        if not isinstance (fhandle, str):
-            fhandle = '#%d' % fhandle
+        fhandle = to_fhandle (fhandle)
         if fhandle not in self.files:
             print ("Warning: Closing unopened file %s" % fhandle)
             return
@@ -607,7 +639,7 @@ class Interpreter:
     # end def cmd_endif
 
     def cmd_field (self, fhandle, fieldlist):
-        self.fields [fhandle] = fieldlist
+        self.fields [to_fhandle (fhandle)] = fieldlist
     # end def cmd_field
 
     def cmd_for (self, var, frm, to, step = 1):
@@ -636,17 +668,17 @@ class Interpreter:
         self.stack.push (stack_entry)
     # end def cmd_for
 
-    def cmd_get (self, num):
-        fh = '#%d' % num
+    def cmd_get (self, fhandle):
+        fh = to_fhandle (fhandle)
         fl = self.fields [fh]
         if self.files [fh] is None:
-            for l, var in fl:
-                self.var [var] = ''
+            for l, lhs in fl:
+                lhs ().set ('')
         else:
             r = self.files [fh].read (self.reclen [fh])
             off = 0
-            for l, var in fl:
-                self.var [var] = r [off:off+l]
+            for l, lhs in fl:
+                lhs ().set (r [off:off+l])
                 off += l
     # end def cmd_get
 
@@ -703,18 +735,32 @@ class Interpreter:
     # end def cmd_locate
 
     def cmd_lset (self, lhs, expr):
-        v, expr = self.lset_rset_mid_paramcheck (lhs, expr)
-        if v is None or expr is None:
+        """ According to pcbasic docs lset will do nothing if the
+            variable is not defined. But apparently some mininec
+            implementations use this with variables undefined. It may be
+            a bug in the mininec implementation but we allow undefined
+            variables. In case of undefined variables we treat this like
+            an assignment.
+        """
+        lhs = lhs ()
+        v, expr = self.lset_rset_mid_paramcheck (lhs, expr ())
+        if expr is None:
             return
+        if v is None:
+            v = ' ' * len (expr)
         if len (expr) < len (v):
-            expr += ' ' * (len (v) - len (expr))
+            if isinstance (expr, bytes):
+                expr += b' ' * (len (v) - len (expr))
+            else:
+                expr += ' ' * (len (v) - len (expr))
         if len (expr) > len (v):
             expr = expr [:len (v)]
         lhs.set (expr)
     # end def cmd_lset
 
     def cmd_mid (self, lhs, pos, length, expr):
-        v, expr = self.lset_rset_mid_paramcheck (lhs, expr)
+        lhs = lhs ()
+        v, expr = self.lset_rset_mid_paramcheck (lhs, expr ())
         if v is None or expr is None:
             return
         if pos + length > len (v):
@@ -755,7 +801,8 @@ class Interpreter:
     # end def cmd_ongoto
 
     def cmd_open (self, expr, forwhat, fhandle):
-        expr = expr ()
+        fhandle = to_fhandle (fhandle)
+        expr    = expr ()
         assert isinstance (expr, str)
         if expr == 'SCRN:':
             self.files [fhandle] = sys.stdout
@@ -766,16 +813,18 @@ class Interpreter:
             self.files [fhandle] = open (expr, open_arg)
     # end def cmd_open
 
-    def cmd_open_read (self, expr, fhandle, len_expr):
-        expr = expr ()
+    def cmd_open_bin (self, expr, fhandle, len_expr):
+        fhandle  = to_fhandle (fhandle)
+        expr     = expr ()
         len_expr = int (len_expr ())
         assert isinstance (expr, str)
         try:
-            self.files  [fhandle] = open (expr, 'r')
+            self.files  [fhandle] = open (expr, 'r+b')
             self.reclen [fhandle] = len_expr
         except FileNotFoundError:
-            self.files [fhandle] = None
-    # end def cmd_open_read
+            self.files [fhandle] = open (expr, 'wb')
+            self.reclen [fhandle] = len_expr
+    # end def cmd_open_bin
 
     def cmd_print (self, printlist, fhandle = None, using = False):
         file = sys.stdout
@@ -816,6 +865,30 @@ class Interpreter:
         print (''.join (l), file = file, end = end)
     # end def cmd_print
 
+    def cmd_put (self, fhandle):
+        fh = to_fhandle (fhandle)
+        fl = self.fields [fh]
+        if self.files [fh] is not None:
+            buf = []
+            for l, lhs in fl:
+                s = lhs ().get ()
+                if s is None:
+                    s = b''
+                if isinstance (s, str):
+                    s = s.encode ('ascii')
+                if len (s) < l:
+                    s += b' ' * (l - len (s))
+                if len (s) > l:
+                    s = s [:l]
+                buf.append (s)
+            buf = b''.join (buf)
+            if len (buf) > self.reclen [fh]:
+                buf = buf [:self.reclen [fh]]
+            if len (buf) < self.reclen [fh]:
+                buf += b' ' * (self.reclen [fh] - len (buf))
+            self.files [fh].write (buf)
+    # end def cmd_put
+
     def cmd_read (self, vars):
         for lhs in vars:
             result = self.data.pop (0)
@@ -831,11 +904,24 @@ class Interpreter:
     # end def cmd_return
 
     def cmd_rset (self, lhs, expr):
-        v, expr = self.lset_rset_mid_paramcheck (lhs, expr)
-        if v is None or expr is None:
+        """ According to pcbasic docs lset will do nothing if the
+            variable is not defined. But apparently some mininec
+            implementations use LSET with variables undefined. It may be
+            a bug in the mininec implementation but we allow undefined
+            variables. In case of undefined variables we treat this like
+            an assignment. We make RSET mirror the behavior of LSET.
+        """
+        lhs = lhs ()
+        v, expr = self.lset_rset_mid_paramcheck (lhs, expr ())
+        if expr is None:
             return
+        if v is None:
+            v = ' ' * len (expr)
         if len (expr) < len (v):
-            expr = ' ' * (len (v) - len (expr)) + expr
+            if isinstance (expr, bytes):
+                expr = b' ' * (len (v) - len (expr)) + expr
+            else:
+                expr = ' ' * (len (v) - len (expr)) + expr
         if len (expr) > len (v):
             expr = expr [:len (v)]
         lhs.set (expr)
@@ -900,21 +986,22 @@ class Interpreter:
                              | get-statement
                              | gosub-statement
                              | goto-statement
-                             | if-statement
                              | if-start-statement
+                             | if-statement
                              | input-statement
                              | locate-statement
+                             | lset-statement
+                             | mid-statement
                              | next-statement
                              | ongoto-statement
                              | open-statement
                              | print-statement
+                             | put-statement
                              | read-statement
                              | rem-statement
                              | return-statement
-                             | write-statement
-                             | lset-statement
                              | rset-statement
-                             | mid-statement
+                             | write-statement
 
         """
         cmd = p [1][0]
@@ -1050,19 +1137,21 @@ class Interpreter:
         """
             expr : ABS LPAREN expr RPAREN
                        | ATN LPAREN expr RPAREN
+                       | CHR LPAREN expr RPAREN
                        | COS LPAREN expr RPAREN
+                       | CVI LPAREN expr RPAREN
+                       | CVS LPAREN expr RPAREN
+                       | FRP LPAREN expr RPAREN
+                       | INT LPAREN expr RPAREN
                        | LOG LPAREN expr RPAREN
+                       | MKI LPAREN expr RPAREN
+                       | MKS LPAREN expr RPAREN
                        | SGN LPAREN expr RPAREN
                        | SIN LPAREN expr RPAREN
                        | SQR LPAREN expr RPAREN
-                       | INT LPAREN expr RPAREN
-                       | TAB LPAREN expr RPAREN
-                       | CVI LPAREN expr RPAREN
-                       | CVS LPAREN expr RPAREN
-                       | CHR LPAREN expr RPAREN
                        | STR LPAREN expr RPAREN
+                       | TAB LPAREN expr RPAREN
                        | VAL LPAREN expr RPAREN
-                       | FRP LPAREN expr RPAREN
         """
         fn = p [1].lower ()
         if fn == 'int':
@@ -1081,6 +1170,10 @@ class Interpreter:
             fun = fun_str
         elif fn == 'frp':
             fun = fun_fractional_part
+        elif fn == 'mki$':
+            fun = fun_mki
+        elif fn == 'mks$':
+            fun = fun_mks
         else:
             if fn == 'sgn':
                 fn = 'sign'
@@ -1271,8 +1364,8 @@ class Interpreter:
 
     def p_fieldlist (self, p):
         """
-            fieldlist : NUMBER AS VAR
-                      | fieldlist COMMA NUMBER AS VAR
+            fieldlist : NUMBER AS lhs
+                      | fieldlist COMMA NUMBER AS lhs
         """
         if len (p) == 4:
             p [0] = [(p [1], p [3])]
@@ -1296,7 +1389,8 @@ class Interpreter:
 
     def p_get_statement (self, p):
         """
-            get-statement : GET NUMBER
+            get-statement : GET FHANDLE
+                          | GET NUMBER
         """
         p [0] = (p [1], p [2])
     # end def p_get_statement
@@ -1458,7 +1552,7 @@ class Interpreter:
         p [0] = (p [1], p [2], p [4], p [6])
     # end def p_open_statement
 
-    def p_open_statement_read (self, p):
+    def p_open_statement_bin (self, p):
         """
             open-statement : OPEN expr AS FHANDLE LEN EQ expr
                            | OPEN expr FOR RANDOM AS FHANDLE LEN EQ expr
@@ -1470,8 +1564,8 @@ class Interpreter:
         else:
             fhandle = p [6]
             length  = p [9]
-        p [0] = ('open_read', expr, fhandle, length)
-    # end def p_open_statement_read
+        p [0] = ('open_bin', expr, fhandle, length)
+    # end def p_open_statement_bin
 
     def p_print_statement (self, p):
         """
@@ -1521,6 +1615,14 @@ class Interpreter:
                 return p1 () + [p2, p3]
         p [0] = x
     # end def p_printlist
+
+    def p_put_statement (self, p):
+        """
+            put-statement : PUT FHANDLE
+                          | PUT NUMBER
+        """
+        p [0] = (p [1], p [2])
+    # end def p_put_statement
 
     def p_read_statement (self, p):
         """
