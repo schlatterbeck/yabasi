@@ -312,6 +312,39 @@ class Stack_Entry_For (Stack_Entry):
 
 # end class Stack_Entry_For
 
+class Context:
+    """ Context of current execution, include line numbers to be able to
+        restore execution after a GOSUB.
+    """
+
+    def __init__ (self, parent, cmdlist = None, cmdidx = None):
+        self.parent  = parent
+        self.cmdlist = cmdlist
+        self.cmdidx  = cmdidx
+        if cmdlist:
+            assert cmdidx is not None
+            self.current = (parent.lineno, parent.sublineno)
+            self.next    = parent.next
+        else:
+            self.current = (parent.lineno, parent.sublineno)
+            self.next    = parent.next
+    # end def __init__
+
+    def __str__ (self):
+        return \
+            ( 'Context: (%d.%d)->(%d.%d) [%s]'
+            % (self.current + self.next + (self.cmdidx,))
+            )
+    # end def __str__
+    __repr__ = __str__
+
+    def restore_context (self):
+        self.parent.next = self.next
+        self.parent.lineno, self.parent.sublineno = self.current
+    # end def restore_context
+
+# end class Context
+
 class Stack_Entry_If (Stack_Entry):
     """ Model a multi-line IF/ELSE/END IF
     """
@@ -412,6 +445,7 @@ class Interpreter:
         self.lines    = {}
         self.stack    = Exec_Stack ()
         self.gstack   = [] # gosub
+        self.context  = None
         self.files    = {}
         self.data     = []
         self.reclen   = {}
@@ -489,6 +523,17 @@ class Interpreter:
         return self.flines [(self.lineno, self.sublineno)]
     # end def fline
 
+    def exec_cmdlist (self, cmdlist, idx):
+        for i in range (idx, len (cmdlist)):
+            cmd = cmdlist [i]
+            self.context = Context (self, cmdlist, i)
+            cmd [0] (*cmd [1:])
+            # If there was a GOSUB stop execution of cmdlist
+            if self.context is None:
+                return
+        self.context = None
+    # end def exec_cmdlist
+
     def fun_tab (self, expr):
         # We print *at* the tab position
         expr     = int (expr) - 1
@@ -506,7 +551,6 @@ class Interpreter:
 
     def lset_rset_mid_paramcheck (self, lhs, expr):
         if not isinstance (expr, (str, bytes)):
-            import pdb; pdb.set_trace ()
             self.raise_error ('Non-string expression')
             return (None, None)
         if not lhs.name.endswith ('$'):
@@ -530,6 +574,8 @@ class Interpreter:
         self.running = True
         l = self.first
         self.lineno, self.sublineno = l
+        # Ignore these exceptions and print better error:
+        ex = (ZeroDivisionError, ValueError, KeyError, IndexError)
         while self.running and not self.err_seen and l:
             if  (  (self.sublineno == 0 and self.lineno == self.break_lineno)
                 or self.break_lineno == 'all'
@@ -545,9 +591,7 @@ class Interpreter:
             if self.exec_condition or name in self.skip_mode_commands:
                 try:
                     line [0] (*line [1:])
-                except \
-                    (ZeroDivisionError, ValueError, KeyError, IndexError) \
-                    as err:
+                except ex as err:
                     self.raise_error (err)
             l = self.next
             if l:
@@ -683,11 +727,16 @@ class Interpreter:
     # end def cmd_get
 
     def cmd_gosub (self, nextline):
-        self.gstack.append (self.next)
+        if self.context:
+            self.gstack.append (self.context)
+            self.context = None
+        else:
+            self.gstack.append (Context (self))
         self.next = (int (nextline), 0)
     # end def cmd_gosub
 
     def cmd_goto (self, nextline):
+        self.context = None
         self.next = (int (nextline), 0)
     # end def cmd_goto
 
@@ -697,8 +746,7 @@ class Interpreter:
         elif isinstance (line_or_cmd, tuple):
             line_or_cmd [0] (*line_or_cmd [1:])
         else:
-            for cmd in line_or_cmd:
-                cmd [0] (*cmd [1:])
+            self.exec_cmdlist (line_or_cmd, 0)
     # end def _cmd_if
 
     def cmd_if (self, expr, line_or_cmd, line_or_cmd2 = None):
@@ -776,8 +824,7 @@ class Interpreter:
 
     def cmd_multi (self, l):
         """ Multiple commands separated by colon """
-        for item in l:
-            item [0] (*item [1:])
+        self.exec_cmdlist (l, 0)
     # end def cmd_multi
 
     def cmd_next (self, var):
@@ -900,7 +947,13 @@ class Interpreter:
     # end def cmd_rem
 
     def cmd_return (self):
-        self.next = self.gstack.pop ()
+        if not self.gstack:
+            self.raise_error ('RETURN without GOSUB')
+            return
+        next = self.gstack.pop ()
+        next.restore_context ()
+        if next.cmdlist:
+            self.exec_cmdlist (next.cmdlist, next.cmdidx + 1)
     # end def cmd_return
 
     def cmd_rset (self, lhs, expr):
