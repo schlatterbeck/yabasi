@@ -43,6 +43,7 @@ class Tokenizer:
         , 'IF'
         , 'INPUT'
         , 'LEN'
+        , 'LINE'
         , 'LOCATE'
         , 'LSET'
         , 'MOD'

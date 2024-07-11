@@ -791,6 +791,11 @@ class Interpreter:
             lhs.set (value)
     # end def cmd_input
 
+    def cmd_line_input (self, fhandle, lhs):
+        lhs = lhs ()
+        lhs.set (self.files [fhandle].readline () [:255])
+    # end def cmd_line_input
+
     def cmd_locate (self, num):
         """ Probably positions cursor """
         print ('\r', end = '')
@@ -1065,6 +1070,7 @@ class Interpreter:
                              | if-start-statement
                              | if-statement
                              | input-statement
+                             | line-input-statement
                              | locate-statement
                              | lset-statement
                              | mid-statement
@@ -1561,6 +1567,13 @@ class Interpreter:
                 return L_Value_Dim (self, p1, r)
         p [0] = x
     # end def p_lhs
+
+    def p_line_input_statement (self, p):
+        """
+            line-input-statement : LINE INPUT FHANDLE COMMA lhs
+        """
+        p [0] = ['line_input', p [3], p [5]]
+    # end def p_line_input_statement
 
     def p_literal (self, p):
         """
