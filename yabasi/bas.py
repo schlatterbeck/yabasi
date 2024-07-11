@@ -854,8 +854,15 @@ class Interpreter:
 
     def cmd_ongoto (self, expr, lines):
         expr = int (expr ()) - 1
-        self.next = lines [expr]
+        self.next = (lines [expr], 0)
     # end def cmd_ongoto
+
+    def cmd_ongosub (self, expr, lines):
+        expr = int (expr ()) - 1
+        assert not self.context
+        self.gstack.append (Context (self))
+        self.next = (lines [expr], 0)
+    # end def cmd_ongosub
 
     def cmd_open (self, expr, forwhat, fhandle):
         fhandle = to_fhandle (fhandle)
@@ -1058,6 +1065,7 @@ class Interpreter:
                              | lset-statement
                              | mid-statement
                              | next-statement
+                             | ongosub-statement
                              | ongoto-statement
                              | open-statement
                              | print-statement
@@ -1612,6 +1620,13 @@ class Interpreter:
         """
         p [0] = ('ongoto', p [2], p [4])
     # end def p_ongoto_statement
+
+    def p_ongosub_statement (self, p):
+        """
+            ongosub-statement : ON expr GOSUB intlist
+        """
+        p [0] = ('ongoto', p [2], p [4])
+    # end def p_ongosub_statement
 
     def p_open_statement (self, p):
         """
