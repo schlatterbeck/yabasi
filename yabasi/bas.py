@@ -768,14 +768,17 @@ class Interpreter:
         self.stack.push (Stack_Entry_If (self, cond))
     # end def cmd_if_start
 
-    def cmd_input (self, vars, s = ''):
+    def cmd_input (self, vars, s = '', fhandle = None):
         prompt = s + ': '
-        if self.input is not None:
-            print (prompt, end = '')
-            value = self.input.readline ().rstrip ()
-            print (value)
+        if fhandle is None:
+            if self.input is not None:
+                print (prompt, end = '')
+                value = self.input.readline ().rstrip ()
+                print (value)
+            else:
+                value = input (prompt)
         else:
-            value = input (prompt)
+            value = self.files [fhandle].readline ().rstrip ()
         if len (vars) > 1:
             for lhs, v in zip (vars, value.split (',')):
                 lhs ().set (v)
@@ -1511,8 +1514,12 @@ class Interpreter:
     def p_input_statement_multi (self, p):
         """
             input-statement : INPUT varlist-complex
+                            | INPUT FHANDLE COMMA varlist-complex
         """
-        p [0] = (p [1], p [2])
+        if len (p) == 3:
+            p [0] = (p [1], p [2])
+        else:
+            p [0] = (p [1], p [3], '', p [2])
     # end def p_input_statement_multi
 
     def p_intlist (self, p):
