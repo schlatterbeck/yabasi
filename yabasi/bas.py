@@ -864,6 +864,8 @@ class Interpreter:
             open_arg = 'w'
             if forwhat.lower () == 'append':
                 open_arg = 'a'
+            if forwhat.lower () == 'input':
+                open_arg = 'r'
             self.files [fhandle] = open (expr, open_arg)
     # end def cmd_open
 
@@ -1608,6 +1610,7 @@ class Interpreter:
         """
             open-statement : OPEN expr FOR OUTPUT AS FHANDLE
                            | OPEN expr FOR APPEND AS FHANDLE
+                           | OPEN expr FOR INPUT  AS FHANDLE
         """
         p [0] = (p [1], p [2], p [4], p [6])
     # end def p_open_statement
