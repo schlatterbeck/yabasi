@@ -1655,11 +1655,14 @@ class Interpreter:
     def p_print_statement (self, p):
         """
             print-statement : PRINT printlist
+                            | PRINT USING printlist
                             | PRINT FHANDLE COMMA printlist
                             | PRINT FHANDLE COMMA USING printlist
         """
         if len (p) == 3:
             p [0] = (p [1], p [2])
+        elif len (p) == 4:
+            p [0] = (p [1], p [3], None, True)
         elif len (p) == 5:
             p [0] = (p [1], p [4], p [2])
         else:
