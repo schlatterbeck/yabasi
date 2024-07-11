@@ -437,6 +437,8 @@ class Interpreter:
 
     skip_mode_commands = set (('if_start', 'else', 'endif', 'for', 'next'))
 
+    re_eol_comment = re.compile (r"['][^']+$")
+
     def __init__ (self, args):
         self.args   = args
         self.input  = None
@@ -486,13 +488,15 @@ class Interpreter:
                 self.tokenizer.lexer.fline     = fline + 1
                 # Newer versions seem to have comments starting with "'"
                 # And we now handle empty lines gracefully
-                if not l or l.lstrip ().startswith ("'"):
+                if not l or r.lstrip ().startswith ("'"):
                     self.tokenizer.feed ('REM')
                     p = self.parser.parse (lexer = self.tokenizer)
                     self.insert (p)
                     continue
                 if l [0] == '\x1a':
                     break
+                if self.re_eol_comment.search (r):
+                    r = r [:r.rindex ("'")]
                 if ' ' in r:
                     a, b = r.split (None, 1)
                     if a == 'REM':
