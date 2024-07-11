@@ -5,6 +5,7 @@ from argparse import ArgumentParser
 import numpy as np
 import re
 import sys
+import os
 import datetime
 import struct
 from . import tokenizer
@@ -791,6 +792,16 @@ class Interpreter:
             lhs.set (value)
     # end def cmd_input
 
+    def cmd_kill (self, expr):
+        s = expr ()
+        if not isinstance (s, str):
+            self.raise_error ("Non-string expression")
+        try:
+            os.unlink (s)
+        except FileNotFoundError:
+            pass
+    # end def cmd_kill
+
     def cmd_line_input (self, fhandle, lhs):
         lhs = lhs ()
         lhs.set (self.files [fhandle].readline () [:255])
@@ -1070,6 +1081,7 @@ class Interpreter:
                              | if-start-statement
                              | if-statement
                              | input-statement
+                             | kill-statement
                              | line-input-statement
                              | locate-statement
                              | lset-statement
@@ -1550,6 +1562,13 @@ class Interpreter:
         else:
             p [0] = p [1] + [p [3]]
     # end def p_intlist
+
+    def p_kill_statement (self, p):
+        """
+            kill-statement : KILL expr
+        """
+        p [0] = [p [1], p [2]]
+    # end def p_kill_statement
 
     def p_lhs (self, p):
         """

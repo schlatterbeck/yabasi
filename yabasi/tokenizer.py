@@ -42,6 +42,7 @@ class Tokenizer:
         , 'GOTO'
         , 'IF'
         , 'INPUT'
+        , 'KILL'
         , 'LEN'
         , 'LINE'
         , 'LOCATE'
