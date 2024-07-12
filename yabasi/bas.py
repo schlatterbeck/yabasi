@@ -1742,7 +1742,7 @@ class Interpreter:
         if len (p) == 3:
             p [0] = (p [1], p [2])
         else:
-            p [0] = (p [1], p [3], '', p [2])
+            p [0] = (p [1], p [4], '', p [2])
     # end def p_input_statement_multi
 
     def p_intlist (self, p):
