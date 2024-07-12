@@ -70,6 +70,7 @@ class Tokenizer:
         , 'RANDOM'
         , 'READ'
         , 'REM'
+        , 'RESUME'
         , 'RETURN'
         , 'RSET'
         , 'STEP'

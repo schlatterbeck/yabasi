@@ -472,6 +472,7 @@ class Interpreter:
         self.dim      = {}
         self.flines   = {}
         self.onerr    = None
+        self.resume   = None
         self.var ['DATE$'] = str (datetime.date.today ())
         self.var ['TIME$'] = datetime.datetime.now ().strftime ('%H:%M:%S')
 
@@ -584,10 +585,12 @@ class Interpreter:
             , file = sys.stderr
             )
         if self.onerr:
-            self.context = None
-            self.next = self.onerr
+            self.next    = self.onerr
+            self.resume  = self.onerr
+            self.onerr   = None
         else:
             self.err_seen = True
+        self.context  = None
     # end def raise_error
 
     def run (self):
@@ -888,9 +891,10 @@ class Interpreter:
     def cmd_onerr_goto (self, nextline):
         nextline = int (nextline)
         if nextline == 0:
-            self.onerr = None
+            self.onerr  = None
         else:
             self.onerr = (nextline, 0)
+        self.resume = None
     # end def cmd_onerr_goto
 
     def cmd_ongoto (self, expr, lines):
@@ -1009,6 +1013,15 @@ class Interpreter:
         pass
     # end def cmd_rem
 
+    def cmd_resume (self, nextline):
+        if not self.resume:
+            self.raise_error ('RESUME without error')
+        self.context = None
+        self.next    = (int (nextline), 0)
+        self.onerr   = self.resume
+        self.resume  = None
+    # end def cmd_resume
+
     def cmd_return (self):
         if not self.gstack:
             self.raise_error ('RETURN without GOSUB')
@@ -1119,6 +1132,7 @@ class Interpreter:
                              | put-statement
                              | read-statement
                              | rem-statement
+                             | resume-statement
                              | return-statement
                              | rset-statement
                              | write-statement
@@ -1803,6 +1817,13 @@ class Interpreter:
         """
         p [0] = [p [1]]
     # end def p_rem_statement
+
+    def p_resume_statement (self, p):
+        """
+            resume-statement : RESUME NUMBER
+        """
+        p [0] = [p [1], p [2]]
+    # end def p_resume_statement
 
     def p_return_statement (self, p):
         """
