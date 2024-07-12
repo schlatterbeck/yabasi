@@ -52,6 +52,14 @@ def fun_fractional_part (expr):
     return expr - int (expr)
 # end def fun_fractional_part
 
+def fun_inkey ():
+    """ In the programs we currently support, INKEY$ is used for
+        clearing the input buffer, no need to do this with, e.g., cooked
+        terminal mode on Linux. So we always return an empty string.
+    """
+    return ''
+# end def fun_inkey
+
 def fun_left (expr1, expr2):
     expr2 = int (expr2)
     assert isinstance (expr1, str)
@@ -1227,6 +1235,16 @@ class Interpreter:
             return p1
         p [0] = x
     # end def p_expression_literal
+
+    def p_expression_function_0 (self, p):
+        """
+            expr : INKEY
+        """
+        fun = fun_inkey
+        def x ():
+            return fun ()
+        p [0] = x
+    # end def p_expression_function_0
 
     def p_expression_function (self, p):
         """

@@ -21,6 +21,17 @@ class Tokenizer:
         ]
     funcs = dict ((k, k) for k in funcs)
 
+    strfuncs = \
+        [ 'CHR$'
+        , 'INKEY$'
+        , 'LEFT$'
+        , 'MID$'
+        , 'MKI$'
+        , 'MKS$'
+        , 'RIGHT$'
+        , 'STR$'
+        ]
+
     reserved = \
         [ 'AND'
         , 'APPEND'
@@ -70,8 +81,7 @@ class Tokenizer:
     reserved = dict ((k, k) for k in reserved)
 
     tokens = \
-        [ 'CHR'
-        , 'COLON'
+        [ 'COLON'
         , 'COMMA'
         , 'DIVIDE'
         , 'EQ'
@@ -80,27 +90,20 @@ class Tokenizer:
         , 'GE'
         , 'GT'
         , 'LE'
-        , 'LEFT'
         , 'LPAREN'
         , 'LT'
-        , 'MID'
         , 'MINUS'
-        , 'MKI'
-        , 'MKS'
         , 'NE'
         , 'NUMBER'
         , 'PLUS'
-        , 'RIGHT'
         , 'RPAREN'
         , 'SEMIC'
-        , 'STR'
         , 'STRING_DQ'
         , 'STRING_SQ'
         , 'TIMES'
         , 'VAR'
-        ] + list (funcs) + list (reserved)
+        ] + list (funcs) + list (reserved) + [x [:-1] for x in strfuncs]
 
-    t_CHR     = r'CHR[$]'
     t_COLON   = r':'
     t_COMMA   = r','
     t_DIVIDE  = r'/'
@@ -109,20 +112,14 @@ class Tokenizer:
     t_FHANDLE = r'[#][0-9]'
     t_GE      = r'>='
     t_GT      = r'>'
-    t_LEFT    = r'LEFT[$]'
     t_LE      = r'<='
     t_LPAREN  = r'[(]'
     t_LT      = r'<'
-    t_MID     = r'MID[$]'
     t_MINUS   = r'-'
-    t_MKI     = r'MKI[$]'
-    t_MKS     = r'MKS[$]'
     t_NE      = r'(<>)|(><)'
     t_PLUS    = r'\+'
-    t_RIGHT   = r'RIGHT[$]'
     t_RPAREN  = r'[)]'
     t_SEMIC   = r';'
-    t_STR     = r'STR[$]'
     t_TIMES   = r'\*'
 
     t_ignore  = '\n\t '
@@ -160,17 +157,11 @@ class Tokenizer:
         if t.value in self.funcs:
             t.type = self.funcs [t.value]
             return t
+        if t.value in self.strfuncs:
+            t.type = t.value [:-1]
+            return t
         if t.value in self.reserved:
             t.type = self.reserved [t.value]
-            return t
-        if t.value == 'LEFT$' or t.value == 'RIGHT$' or t.value == 'CHR$':
-            t.type = t.value [:-1]
-            return t
-        if t.value == 'MID$' or t.value == 'STR$':
-            t.type = t.value [:-1]
-            return t
-        if t.value == 'MKI$' or t.value == 'MKS$':
-            t.type = t.value [:-1]
             return t
         return t
     # end def t_VAR
@@ -183,6 +174,9 @@ class Tokenizer:
     # END TOKEN DEFINITION
 
     def __init__ (self, **kw):
+        for n in self.strfuncs:
+            n = n [:-1]
+            setattr (self, 't_' + n, r'%s[$]' % n)
         self.lexer = lex.lex (module = self, **kw)
     # end def __init__
 
