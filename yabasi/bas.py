@@ -435,6 +435,69 @@ def to_fhandle (x):
     return x
 # end def to_fhandle
 
+class Basic_File:
+
+    def __init__ (self, name, mode = None, reclen = None, binary = False):
+        self.name        = name
+        self.reclen      = reclen
+        self.binary      = binary
+        self.mode        = mode
+        self.fields      = None
+        self.cached_line = None
+        self.binmode     = ''
+        if self.binary:
+            self.binmode = 'b'
+        if name == 'SCRN:':
+            self.f = sys.stdout
+        elif name:
+            if mode is None:
+                for m in ('r+', 'w'):
+                    self.mode = m + self.binmode
+                    try:
+                        self.f = open (name, self.mode)
+                        break
+                    except FileNotFoundError:
+                        pass
+            else:
+                self.mode = self.mode + self.binmode
+                self.f = open (name, self.mode)
+        else:
+            self.f = None
+    # end def __init__
+
+    def close (self):
+        if self.f and self.f != sys.stdout:
+            self.f.close ()
+    # end def close
+
+    def eof (self):
+        if self.binary:
+            pos  = self.f.tell ()
+            npos = self.f.seek (1, 1)
+            if npos == pos:
+                return True
+            else:
+                assert npos - pos == 1
+                npos = self.f.seek (-1, 1)
+                assert npos == pos
+                return False
+        else:
+            self.cached_line = self.f.readline ()
+            if not self.cached_line:
+                return True
+            return False
+    # end def eof
+
+    def readline (self):
+        if self.cached_line:
+            r = self.cached_line
+            self.cached_line = None
+            return r
+        return self.f.readline ()
+    # end def readline
+
+# end class Basic_File
+
 class Interpreter:
     print_special = \
         { ',' : ('++,++', 'COMMA')
@@ -463,8 +526,6 @@ class Interpreter:
         self.context  = None
         self.files    = {}
         self.data     = []
-        self.reclen   = {}
-        self.fields   = {}
         self.defint   = {}
         self.err_seen = False
         # Variables and dimensioned variables do not occupy the same namespace
@@ -623,6 +684,13 @@ class Interpreter:
                 self.lineno, self.sublineno = l
     # end def run
 
+    # FUNCTIONS which need access to interpreter
+
+    def fun_eof (self, number):
+        fhandle = to_fhandle (number)
+        return self.files [fhandle].eof ()
+    # end def fun_eof
+
     # COMMANDS
 
     def cmd_assign (self, lhs, expr):
@@ -639,16 +707,15 @@ class Interpreter:
         """
         if fhandle is None:
             for fh in self.files:
-                if self.files [fh] != sys.stdout:
-                    self.files [fh].close ()
+                self.files [fh].close ()
             self.files = {}
             return
         fhandle = to_fhandle (fhandle)
         if fhandle not in self.files:
             print ("Warning: Closing unopened file %s" % fhandle)
             return
-        if self.files [fhandle] and self.files [fhandle] != sys.stdout:
-            self.files [fhandle].close ()
+        if self.files [fhandle]:
+            self.files [fhandle].f.close ()
         del self.files [fhandle]
     # end def cmd_close
 
@@ -708,7 +775,10 @@ class Interpreter:
     # end def cmd_endif
 
     def cmd_field (self, fhandle, fieldlist):
-        self.fields [to_fhandle (fhandle)] = fieldlist
+        fhandle = to_fhandle (fhandle)
+        if fhandle not in self.files:
+            self.files [fhandle] = Basic_File (None)
+        self.files [fhandle].fields = fieldlist
     # end def cmd_field
 
     def cmd_for (self, var, frm, to, step = 1):
@@ -739,13 +809,14 @@ class Interpreter:
 
     def cmd_get (self, fhandle):
         fh = to_fhandle (fhandle)
-        fl = self.fields [fh]
-        if self.files [fh] is None:
+        f  = self.files [fh]
+        fl = f.fields
+        if f.f is None:
             for l, lhs in fl:
                 lhs ().set ('')
         else:
             try:
-                r = self.files [fh].read (self.reclen [fh])
+                r = f.f.read (f.reclen)
             except IOError:
                 r = b''
             off = 0
@@ -909,41 +980,36 @@ class Interpreter:
         self.next = (lines [expr], 0)
     # end def cmd_ongosub
 
-    def cmd_open (self, expr, forwhat, fhandle):
+    def cmd_open (self, expr, forwhat, fhandle, len_expr = None):
         fhandle = to_fhandle (fhandle)
         expr    = expr ()
+        if not isinstance (expr, str):
+            self.raise_error ('Expect string expression for filename')
+            return
+        if forwhat is not None:
+            forwhat = forwhat.lower ()
+        if len_expr is not None:
+            len_expr = int (len_expr ())
         assert isinstance (expr, str)
-        if expr == 'SCRN:':
-            self.files [fhandle] = sys.stdout
-        else:
-            open_arg = 'w'
-            if forwhat.lower () == 'append':
-                open_arg = 'a'
-            if forwhat.lower () == 'input':
-                open_arg = 'r'
-            try:
-                self.files [fhandle] = open (expr, open_arg)
-            except IOError as err:
-                self.raise_error (err)
-    # end def cmd_open
-
-    def cmd_open_bin (self, expr, fhandle, len_expr):
-        fhandle  = to_fhandle (fhandle)
-        expr     = expr ()
-        len_expr = int (len_expr ())
-        assert isinstance (expr, str)
+        # The default mode is read/write (used when forwhat is RANDOM)
+        mode = None
+        if forwhat == 'append':
+            mode = 'a'
+        if forwhat == 'output':
+            mode = 'w'
+        elif forwhat == 'input':
+            mode = 'r'
+        is_bin = len_expr is not None
         try:
-            self.files  [fhandle] = open (expr, 'r+b')
-            self.reclen [fhandle] = len_expr
-        except FileNotFoundError:
-            self.files [fhandle] = open (expr, 'wb')
-            self.reclen [fhandle] = len_expr
-    # end def cmd_open_bin
+            self.files [fhandle] = Basic_File (expr, mode, len_expr, is_bin)
+        except IOError as err:
+            self.raise_error (err)
+    # end def cmd_open
 
     def cmd_print (self, printlist, fhandle = None, using = False):
         file = sys.stdout
         if fhandle is not None:
-            file = self.files [fhandle]
+            file = self.files [fhandle].f
         l   = []
         c   = None
         fmt = None
@@ -981,8 +1047,9 @@ class Interpreter:
 
     def cmd_put (self, fhandle):
         fh = to_fhandle (fhandle)
-        fl = self.fields [fh]
         if self.files [fh] is not None:
+            fobj = self.files [fh]
+            fl   = fobj.fields
             buf = []
             for l, lhs in fl:
                 s = lhs ().get ()
@@ -996,11 +1063,11 @@ class Interpreter:
                     s = s [:l]
                 buf.append (s)
             buf = b''.join (buf)
-            if len (buf) > self.reclen [fh]:
-                buf = buf [:self.reclen [fh]]
-            if len (buf) < self.reclen [fh]:
-                buf += b' ' * (self.reclen [fh] - len (buf))
-            self.files [fh].write (buf)
+            if len (buf) > fobj.reclen:
+                buf = buf [:fobj.reclen]
+            if len (buf) < fobj.reclen:
+                buf += b' ' * (fobj.reclen - len (buf))
+            fobj.f.write (buf)
     # end def cmd_put
 
     def cmd_read (self, vars):
@@ -1059,7 +1126,7 @@ class Interpreter:
     def cmd_write (self, fhandle, exprs):
         file = sys.stdout
         if fhandle is not None:
-            file = self.files [fhandle]
+            file = self.files [fhandle].f
         r    = []
         for ex in exprs ():
             r.append (repr (ex))
@@ -1285,6 +1352,7 @@ class Interpreter:
                  | COS LPAREN expr RPAREN
                  | CVI LPAREN expr RPAREN
                  | CVS LPAREN expr RPAREN
+                 | EOF LPAREN expr RPAREN
                  | FRP LPAREN expr RPAREN
                  | INT LPAREN expr RPAREN
                  | LOG LPAREN expr RPAREN
@@ -1304,6 +1372,8 @@ class Interpreter:
             fun = fun_cvi
         elif fn == 'cvs':
             fun = fun_cvs
+        elif fn == 'eof':
+            fun = self.fun_eof
         elif fn == 'frp':
             fun = fun_fractional_part
         elif fn == 'int':
@@ -1725,6 +1795,7 @@ class Interpreter:
             open-statement : OPEN expr FOR OUTPUT AS FHANDLE
                            | OPEN expr FOR APPEND AS FHANDLE
                            | OPEN expr FOR INPUT  AS FHANDLE
+                           | OPEN expr FOR RANDOM AS FHANDLE
         """
         p [0] = (p [1], p [2], p [4], p [6])
     # end def p_open_statement
@@ -1733,15 +1804,19 @@ class Interpreter:
         """
             open-statement : OPEN expr AS FHANDLE LEN EQ expr
                            | OPEN expr FOR RANDOM AS FHANDLE LEN EQ expr
+                           | OPEN expr FOR OUTPUT AS FHANDLE LEN EQ expr
+                           | OPEN expr FOR INPUT  AS FHANDLE LEN EQ expr
         """
         expr = p [2]
         if len (p) == 8:
             fhandle = p [4]
             length  = p [7]
+            forwhat = None
         else:
             fhandle = p [6]
             length  = p [9]
-        p [0] = ('open_bin', expr, fhandle, length)
+            forwhat = p [4]
+        p [0] = (p [1], expr, forwhat, fhandle, length)
     # end def p_open_statement_bin
 
     def p_print_statement (self, p):
