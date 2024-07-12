@@ -46,6 +46,7 @@ class Tokenizer:
         , 'DIM'
         , 'END'
         , 'ELSE'
+        , 'ERROR'
         , 'FIELD'
         , 'FOR'
         , 'GET'

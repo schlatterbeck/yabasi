@@ -471,6 +471,7 @@ class Interpreter:
         self.var      = {}
         self.dim      = {}
         self.flines   = {}
+        self.onerr    = None
         self.var ['DATE$'] = str (datetime.date.today ())
         self.var ['TIME$'] = datetime.datetime.now ().strftime ('%H:%M:%S')
 
@@ -582,7 +583,11 @@ class Interpreter:
             % (errmsg, self.fline, self.lineno, self.sublineno)
             , file = sys.stderr
             )
-        self.err_seen = True
+        if self.onerr:
+            self.context = None
+            self.next = self.onerr
+        else:
+            self.err_seen = True
     # end def raise_error
 
     def run (self):
@@ -880,6 +885,14 @@ class Interpreter:
         top.handle_next ()
     # end def cmd_next
 
+    def cmd_onerr_goto (self, nextline):
+        nextline = int (nextline)
+        if nextline == 0:
+            self.onerr = None
+        else:
+            self.onerr = (nextline, 0)
+    # end def cmd_onerr_goto
+
     def cmd_ongoto (self, expr, lines):
         expr = int (expr ()) - 1
         self.next = (lines [expr], 0)
@@ -904,7 +917,10 @@ class Interpreter:
                 open_arg = 'a'
             if forwhat.lower () == 'input':
                 open_arg = 'r'
-            self.files [fhandle] = open (expr, open_arg)
+            try:
+                self.files [fhandle] = open (expr, open_arg)
+            except IOError as err:
+                self.raise_error (err)
     # end def cmd_open
 
     def cmd_open_bin (self, expr, fhandle, len_expr):
@@ -1095,6 +1111,7 @@ class Interpreter:
                              | lset-statement
                              | mid-statement
                              | next-statement
+                             | onerrgoto-statement
                              | ongosub-statement
                              | ongoto-statement
                              | open-statement
@@ -1667,6 +1684,13 @@ class Interpreter:
         """
         p [0] = (p [1], p [2])
     # end def p_next_statement
+
+    def p_onerror_goto_statement (self, p):
+        """
+            onerrgoto-statement : ON ERROR GOTO NUMBER
+        """
+        p [0] = ['onerr_goto', p [4]]
+    # end def p_onerror_goto_statement
 
     def p_ongoto_statement (self, p):
         """
