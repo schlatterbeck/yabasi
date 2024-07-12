@@ -60,6 +60,14 @@ def fun_inkey ():
     return ''
 # end def fun_inkey
 
+def fun_instr (offset, parent, child):
+    if offset is not None:
+        offset = int (offset) - 1
+    else:
+        offset = 0
+    return parent.find (child, offset) + 1
+# end def fun_instr
+
 def fun_left (expr1, expr2):
     expr2 = int (expr2)
     assert isinstance (expr1, str)
@@ -1422,12 +1430,18 @@ class Interpreter:
 
     def p_expression_function_2_3 (self, p):
         """
-            expr : MID LPAREN expr COMMA expr COMMA expr RPAREN
-                 | MID LPAREN expr COMMA expr RPAREN
+            expr : MID   LPAREN expr COMMA expr COMMA expr RPAREN
+                 | MID   LPAREN expr COMMA expr RPAREN
+                 | INSTR LPAREN expr COMMA expr RPAREN
+                 | INSTR LPAREN expr COMMA expr COMMA expr RPAREN
         """
         fn = p [1].lower ()
-        assert fn == 'mid$'
-        fun = fun_mid
+        if fn == 'mid$':
+            fun = fun_mid
+        elif fn == 'instr':
+            fun = fun_instr
+        else:
+            assert 0
         p3 = p [3]
         p5 = p [5]
         if len (p) < 8:

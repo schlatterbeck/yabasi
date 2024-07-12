@@ -12,6 +12,7 @@ class Tokenizer:
         , 'CVS'
         , 'EOF'
         , 'FRP'
+        , 'INSTR'
         , 'INT'
         , 'LOG'
         , 'SGN'
