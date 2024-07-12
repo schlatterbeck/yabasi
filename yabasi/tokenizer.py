@@ -172,6 +172,11 @@ class Tokenizer:
         return t
     # end def t_VAR
 
+    def t_eof_comment (self, t):
+        r"'[^']+$"
+        pass
+    # end def t_eof_comment
+
     def t_error (self, t):
         print ("Illegal character '%s'" % t.value [0])
         t.lexer.skip (1)

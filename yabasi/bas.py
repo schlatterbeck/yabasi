@@ -3,7 +3,6 @@
 from ply import yacc
 from argparse import ArgumentParser
 import numpy as np
-import re
 import sys
 import os
 import datetime
@@ -551,8 +550,6 @@ class Interpreter:
     skip_mode_commands = set \
         (('if_start', 'else', 'endif', 'for', 'next', 'while', 'wend'))
 
-    re_eol_comment = re.compile (r"['][^']+$")
-
     def __init__ (self, args):
         self.args   = args
         self.input  = None
@@ -609,8 +606,6 @@ class Interpreter:
                     continue
                 if l [0] == '\x1a':
                     break
-                if self.re_eol_comment.search (r):
-                    r = r [:r.rindex ("'")]
                 if ' ' in r:
                     a, b = r.split (None, 1)
                     if a == 'REM':
