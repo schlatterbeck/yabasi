@@ -1053,8 +1053,10 @@ class Interpreter:
         print (''.join (l), file = file, end = end)
     # end def cmd_print
 
-    def cmd_put (self, fhandle):
+    def cmd_put (self, fhandle, recno = None):
         fh = to_fhandle (fhandle)
+        if recno is not None:
+            recno = int (recno)
         if self.files [fh] is not None:
             fobj = self.files [fh]
             fl   = fobj.fields
@@ -1075,6 +1077,8 @@ class Interpreter:
                 buf = buf [:fobj.reclen]
             if len (buf) < fobj.reclen:
                 buf += b' ' * (fobj.reclen - len (buf))
+            if recno:
+                fobj.f.seek ((recno - 1) * fobj.reclen)
             fobj.f.write (buf)
     # end def cmd_put
 
@@ -1889,8 +1893,13 @@ class Interpreter:
         """
             put-statement : PUT FHANDLE
                           | PUT NUMBER
+                          | PUT FHANDLE COMMA NUMBER
+                          | PUT NUMBER  COMMA NUMBER
         """
-        p [0] = (p [1], p [2])
+        if len (p) == 3:
+            p [0] = (p [1], p [2])
+        else:
+            p [0] = (p [1], p [2], p [4])
     # end def p_put_statement
 
     def p_read_statement (self, p):
