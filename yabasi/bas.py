@@ -8,6 +8,7 @@ import sys
 import os
 import datetime
 import struct
+import copy
 from . import tokenizer
 
 def fun_chr (expr):
@@ -292,47 +293,6 @@ class Exec_Stack:
 
 # end class
 
-class Stack_Entry:
-    """ We stack FOR/NEXT and IF/ELSE
-        While a condition is False we just skip commands but we still
-        *do* pick up FOR loops and multi-line IF/ELSE
-    """
-
-    def __init__ (self, parent, condition):
-        self.parent    = parent
-        self.condition = condition
-        self.stack     = None
-    # end def __init__
-
-# end class Stack_Entry
-
-class Stack_Entry_For (Stack_Entry):
-
-    def __init__ (self, parent, condition, var, frm, to, step):
-        super ().__init__ (parent, condition)
-        self.var   = var
-        self.start = parent.next
-        self.frm   = frm
-        self.count = frm
-        self.to    = to
-        self.step  = step
-    # end def __init__
-
-    def handle_next (self):
-        assert self.parent.stack.top == self
-        self.count += self.step
-        self.parent.var [self.var] = self.count
-        if  (  self.step > 0 and self.count <= self.to
-            or self.step < 0 and self.count >= self.to
-            ):
-            self.parent.next = self.start
-        else:
-            self.parent.stack.pop ()
-            #print ('NEXT pop')
-    # end def handle_next
-
-# end class Stack_Entry_For
-
 class Context:
     """ Context of current execution, include line numbers to be able to
         restore execution after a GOSUB.
@@ -366,6 +326,61 @@ class Context:
 
 # end class Context
 
+class Stack_Entry:
+    """ We stack FOR/NEXT and IF/ELSE
+        While a condition is False we just skip commands but we still
+        *do* pick up FOR loops and multi-line IF/ELSE
+    """
+
+    def __init__ (self, parent, condition):
+        self.parent    = parent
+        self.condition = condition
+        self.stack     = None
+    # end def __init__
+
+    def continue_context (self):
+        if self.start.cmdidx:
+            self.parent.exec_cmdlist (self.start.cmdlist, self.start.cmdidx)
+        else:
+            self.start.restore_context ()
+    # end def continue_context
+
+    def set_start (self):
+        if self.parent.context:
+            self.start = copy.copy (self.parent.context)
+            self.start.cmdidx += 1
+        else:
+            self.start = Context (self.parent)
+    # end def set_start
+
+# end class Stack_Entry
+
+class Stack_Entry_For (Stack_Entry):
+
+    def __init__ (self, parent, condition, var, frm, to, step):
+        super ().__init__ (parent, condition)
+        self.var   = var
+        self.frm   = frm
+        self.count = frm
+        self.to    = to
+        self.step  = step
+        self.set_start ()
+    # end def __init__
+
+    def handle_next (self):
+        assert self.parent.stack.top == self
+        self.count += self.step
+        self.parent.var [self.var] = self.count
+        if  (  self.step > 0 and self.count <= self.to
+            or self.step < 0 and self.count >= self.to
+            ):
+            self.continue_context ()
+        else:
+            self.parent.stack.pop ()
+    # end def handle_next
+
+# end class Stack_Entry_For
+
 class Stack_Entry_If (Stack_Entry):
     """ Model a multi-line IF/ELSE/END IF
     """
@@ -385,6 +400,24 @@ class Stack_Entry_If (Stack_Entry):
     # end def handle_else
 
 # end class Stack_Entry_If
+
+class Stack_Entry_While (Stack_Entry):
+
+    def __init__ (self, parent, condition, expr):
+        super ().__init__ (parent, condition)
+        self.expr  = expr
+        self.set_start ()
+    # end def __init__
+
+    def handle_wend (self):
+        assert self.parent.stack.top == self
+        if self.condition and self.expr ():
+            self.continue_context ()
+        else:
+            self.parent.stack.pop ()
+    # end def handle_wend
+
+# end class Stack_Entry_While
 
 class L_Value:
     def value (self, v):
@@ -515,7 +548,8 @@ class Interpreter:
         ((c [0], c [1]) for c in print_special.values ())
     tabpos = [14, 28, 42, 56]
 
-    skip_mode_commands = set (('if_start', 'else', 'endif', 'for', 'next'))
+    skip_mode_commands = set \
+        (('if_start', 'else', 'endif', 'for', 'next', 'while', 'wend'))
 
     re_eol_comment = re.compile (r"['][^']+$")
 
@@ -1135,6 +1169,26 @@ class Interpreter:
         lhs.set (expr)
     # end def cmd_rset
 
+    def cmd_wend (self):
+        errmsg = 'WEND without WHILE'
+        if not self.stack:
+            self.raise_error (errmsg)
+            return
+        top = self.stack.top
+        if not isinstance (top, Stack_Entry_While):
+            self.raise_error (errmsg)
+            return
+        top.handle_wend ()
+    # end def cmd_wend
+
+    def cmd_while (self, expr):
+        cond = self.exec_condition
+        if self.exec_condition:
+            cond = (expr ())
+        stack_entry = Stack_Entry_While (self, cond, expr)
+        self.stack.push (stack_entry)
+    # end def cmd_while
+
     def cmd_write (self, fhandle, exprs):
         file = sys.stdout
         if fhandle is not None:
@@ -1214,6 +1268,8 @@ class Interpreter:
                              | resume-statement
                              | return-statement
                              | rset-statement
+                             | wend-statement
+                             | while-statement
                              | write-statement
 
         """
@@ -1976,6 +2032,20 @@ class Interpreter:
         else:
             p [0] = p [1] + [p [3]]
     # end def p_varlist_complex
+
+    def p_wend_statement (self, p):
+        """
+            wend-statement : WEND
+        """
+        p [0] = [p [1]]
+    # end p_wend_statement
+
+    def p_while_statement (self, p):
+        """
+            while-statement : WHILE expr
+        """
+        p [0] = [p [1], p [2]]
+    # end def p_while_statement
 
     def p_write (self, p):
         """

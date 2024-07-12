@@ -80,6 +80,8 @@ class Tokenizer:
         , 'THEN'
         , 'TO'
         , 'USING'
+        , 'WHILE'
+        , 'WEND'
         , 'WRITE'
         ]
     reserved = dict ((k, k) for k in reserved)
