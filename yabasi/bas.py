@@ -1231,44 +1231,44 @@ class Interpreter:
     def p_expression_function (self, p):
         """
             expr : ABS LPAREN expr RPAREN
-                       | ATN LPAREN expr RPAREN
-                       | CHR LPAREN expr RPAREN
-                       | COS LPAREN expr RPAREN
-                       | CVI LPAREN expr RPAREN
-                       | CVS LPAREN expr RPAREN
-                       | FRP LPAREN expr RPAREN
-                       | INT LPAREN expr RPAREN
-                       | LOG LPAREN expr RPAREN
-                       | MKI LPAREN expr RPAREN
-                       | MKS LPAREN expr RPAREN
-                       | SGN LPAREN expr RPAREN
-                       | SIN LPAREN expr RPAREN
-                       | SQR LPAREN expr RPAREN
-                       | STR LPAREN expr RPAREN
-                       | TAB LPAREN expr RPAREN
-                       | VAL LPAREN expr RPAREN
+                 | ATN LPAREN expr RPAREN
+                 | CHR LPAREN expr RPAREN
+                 | COS LPAREN expr RPAREN
+                 | CVI LPAREN expr RPAREN
+                 | CVS LPAREN expr RPAREN
+                 | FRP LPAREN expr RPAREN
+                 | INT LPAREN expr RPAREN
+                 | LOG LPAREN expr RPAREN
+                 | MKI LPAREN expr RPAREN
+                 | MKS LPAREN expr RPAREN
+                 | SGN LPAREN expr RPAREN
+                 | SIN LPAREN expr RPAREN
+                 | SQR LPAREN expr RPAREN
+                 | STR LPAREN expr RPAREN
+                 | TAB LPAREN expr RPAREN
+                 | VAL LPAREN expr RPAREN
         """
         fn = p [1].lower ()
-        if fn == 'int':
-            fun = int
-        elif fn == 'tab':
-            fun = self.fun_tab
+        if fn == 'chr$':
+            fun = fun_chr
         elif fn == 'cvi':
             fun = fun_cvi
         elif fn == 'cvs':
             fun = fun_cvs
-        elif fn == 'chr$':
-            fun = fun_chr
-        elif fn == 'val':
-            fun = float
-        elif fn == 'str$':
-            fun = fun_str
         elif fn == 'frp':
             fun = fun_fractional_part
+        elif fn == 'int':
+            fun = int
         elif fn == 'mki$':
             fun = fun_mki
         elif fn == 'mks$':
             fun = fun_mks
+        elif fn == 'str$':
+            fun = fun_str
+        elif fn == 'tab':
+            fun = self.fun_tab
+        elif fn == 'val':
+            fun = float
         else:
             if fn == 'sgn':
                 fn = 'sign'
