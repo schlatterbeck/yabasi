@@ -2,13 +2,23 @@
 
 from ply import yacc
 from argparse import ArgumentParser
+import tkinter
 import numpy as np
 import sys
 import os
 import datetime
 import struct
 import copy
+import logging
 from . import tokenizer
+
+logging.basicConfig \
+    ( level    = logging.DEBUG
+    , filename = 'parselog.txt'
+    , filemode = 'w'
+    , format   = '%(filename)10s: %(lineno)5d: %(message)s'
+    )
+log = logging.getLogger ()
 
 def fun_chr (expr):
     expr = int (expr)
@@ -51,14 +61,6 @@ def fun_fractional_part (expr):
     """
     return expr - int (expr)
 # end def fun_fractional_part
-
-def fun_inkey ():
-    """ In the programs we currently support, INKEY$ is used for
-        clearing the input buffer, no need to do this with, e.g., cooked
-        terminal mode on Linux. So we always return an empty string.
-    """
-    return ''
-# end def fun_inkey
 
 def fun_instr (offset, parent, child):
     if offset is not None:
@@ -166,6 +168,186 @@ def format_float (v):
         v = ' ' + v
     return v
 # end def format_float
+
+class Screen:
+    """ Default screen emulation doing essentially nothing
+    """
+
+    # Commands
+
+    def cmd_circle (self, x, y, r, opt):
+        pass
+    # end def cmd_circle
+
+    def cmd_color (self, exprlist):
+        pass
+    # end def cmd_color
+
+    def cmd_get_graphics (self, var, e1, e2, e3, e4):
+        return 0
+    # end def cmd_get_graphics
+
+    def cmd_key (self, expr1, expr2):
+        """ Since we cannot get function key input do nothing
+        """
+        pass
+    # end def cmd_key
+
+    def cmd_line (self, x0, y0, x1, y1, lineopt):
+        pass
+    # end def cmd_line
+
+    def cmd_locate (self, row, col, ignore = None):
+        """ Positions cursor, we just go to start of line """
+        print ('\r', end = '')
+    # end def cmd_locate
+
+    def cmd_print (self, s, end = None):
+        print (s, end = end)
+    # end def cmd_print
+
+    def cmd_pset (self, x, y):
+        pass
+    # end def cmd_pset
+
+    def cmd_put_graphics (self, x, y, array, option = None):
+        pass
+    # end def cmd_put_graphics
+
+    def cmd_screen (self, e1, e2, e3, e4):
+        pass
+    # end def cmd_screen
+
+    def cmd_width (self, expr):
+        if int (expr) != 80:
+            raise NotImplementedError ('Screen width != 80 unsupported')
+    # end def cmd_width
+
+    def cmd_window (self, x0 = None, y0 = None, x1 = None, y1 = None):
+        pass
+    # end def cmd_window
+
+    # Functions
+
+    def fun_csrlin ():
+        """ Current row of cursor """
+        return 0
+    # end def fun_csrlin
+
+    def fun_inkey ():
+        """ In the programs we support with the simple screen, INKEY$ is
+            used for clearing the input buffer, no need to do this with,
+            e.g., cooked terminal mode on Linux. So we always return an
+            empty string.
+        """
+        return ''
+    # end def fun_inkey
+
+# end class Screen
+
+class Screen_Tkinter (Screen):
+    """ A tkinter based screen emulation
+    """
+
+    def __init__ (self):
+        self.win    = tkinter.Tk ()
+        self.canvas = tkinter.Canvas (self.win)
+        self.keys   = []
+        self.cursor = [0, 0] # row, col
+        self.funkey = ['', '', '', '', '', '', '', '', '', '']
+        self.win.bind ("<Key>", self.keyhandler)
+    # end def __init__
+
+    def keyhandler (self, event):
+        self.keys.append ((event.char, event.keysym))
+    # end def keyhandler
+
+    # Commands called from outside
+
+    def cmd_circle (self, x, y, r, opt):
+        pass
+    # end def cmd_circle
+
+    def cmd_color (self, exprlist):
+        # FIXME
+        pass
+    # end def cmd_color
+
+    def cmd_get_graphics (self, var, e1, e2, e3, e4):
+        # FIXME
+        return 0
+    # end def cmd_get_graphics
+
+    def cmd_key (self, expr1, expr2):
+        """ Set macro for function key given with first expression
+        """
+        n = int (expr1)
+        if 1 <= n <= 10:
+            self.funkey [n - 1] = str (expr2)
+    # end def cmd_key
+
+    def cmd_line (self, x0, y0, x1, y1, lineopt):
+        # FIXME
+        pass
+    # end def cmd_line
+
+    def cmd_locate (self, row = None, col = None, exprlist = None):
+        """ Positions cursor """
+        if row is not None:
+            self.cursor [0] = row
+        if col is not None:
+            self.cursor [1] = col
+    # end def cmd_locate
+
+    def cmd_print (self, s, end = None):
+        self.canvas.create_text \
+            (*self.cursor, anchor = tkinter.W, font = 'Purisa', text = s)
+        self.win.update ()
+    # end def cmd_print
+
+    def cmd_pset (self, x, y):
+        # FIXME
+        pass
+    # end def cmd_pset
+
+    def cmd_put_graphics (self, x, y, array, option = None):
+        # FIXME
+        pass
+    # end def cmd_put_graphics
+
+    def cmd_screen (self, e1, e2, e3, e4):
+        # FIXME
+        pass
+    # end def cmd_screen
+
+    def cmd_width (self, expr):
+        # FIXME
+        if int (expr) != 80:
+            raise NotImplementedError ('Screen width != 80 unsupported')
+    # end def cmd_width
+
+    def cmd_window (self, x0 = None, y0 = None, x1 = None, y1 = None):
+        if x0 is not None:
+            assert y0 is not None and x1 is not None and y1 is not None
+        else:
+            pass
+    # end def cmd_window
+
+    # Functions called from outside
+
+    def fun_csrlin ():
+        """ Current row of cursor """
+        return self.cursor [0]
+    # end def fun_csrlin
+
+    def fun_inkey ():
+        self.win.update ()
+        if self.keys:
+            return self.keys.pop (0) [1]
+        return ''
+    # end def fun_inkey
+
+# end class Screen_Tkinter
 
 class Print_Using:
     """ Formatter for USING in a print statement
@@ -472,6 +654,9 @@ def to_fhandle (x):
         x = '#%d' % int (x)
     if not x.startswith ('#'):
         x = '#' + x
+    if ' ' in x and x.startswith ('#'):
+        r = int (x [1:])
+        return '#%d' % r
     return x
 # end def to_fhandle
 
@@ -547,6 +732,8 @@ class Interpreter:
         ((c [0], c [1]) for c in print_special.values ())
     tabpos = [14, 28, 42, 56]
 
+    debug = True
+
     skip_mode_commands = set \
         (('if_start', 'else', 'endif', 'for', 'next', 'while', 'wend'))
 
@@ -558,33 +745,43 @@ class Interpreter:
             self.tab = self.tabpos
         if args.input_file:
             self.input = open (args.input_file, 'r')
-        self.col      = 0
-        self.lines    = {}
-        self.stack    = Exec_Stack ()
-        self.gstack   = [] # gosub
-        self.context  = None
-        self.files    = {}
-        self.data     = []
-        self.defint   = {}
-        self.err_seen = False
+        self.col       = 0
+        self.lines     = {}
+        self.stack     = Exec_Stack ()
+        self.gstack    = [] # gosub
+        self.context   = None
+        self.files     = {}
+        self.data      = []
+        self.defint    = {}
+        self.err_seen  = False
         # Variables and dimensioned variables do not occupy the same namespace
-        self.var      = {}
-        self.dim      = {}
-        self.flines   = {}
-        self.onerr    = None
-        self.resume   = None
+        self.var       = {}
+        self.dim       = {}
+        self.flines    = {}
+        self.onerr     = None
+        self.resume    = None
+        self.resume_on = None
         self.var ['DATE$'] = str (datetime.date.today ())
         self.var ['TIME$'] = datetime.datetime.now ().strftime ('%H:%M:%S')
 
         self.tokenizer = tokenizer.Tokenizer ()
         self.tokens    = tokenizer.Tokenizer.tokens
-        self.parser    = yacc.yacc (module = self)
+        self.parser    = yacc.yacc (module = self, debug = True)
+        self.data_ptr  = 0
+        self.functions = {}
+        self.log       = None
+        # Only for debugging
+        if self.debug:
+            self.log = log
+        if self.args.screen == 'tkinter':
+            self.screen = Screen_Tkinter ()
+        else:
+            self.screen = Screen ()
 
         with open (args.program, 'r') as f:
             lineno = self.lineno = sublineno = 0
             for fline, l in enumerate (f):
                 l = l.rstrip ()
-                #print (l)
                 if l and l [0].isnumeric ():
                     lineno, r = l.split (None, 1)
                     lineno = self.lineno = int (lineno)
@@ -614,7 +811,7 @@ class Interpreter:
                         self.insert (p)
                         continue
                 self.tokenizer.feed (r)
-                r = self.parser.parse (lexer = self.tokenizer)
+                r = self.parser.parse (lexer = self.tokenizer, debug = self.log)
                 self.insert (r)
         self.nextline = {}
         self.first    = None
@@ -627,6 +824,12 @@ class Interpreter:
             prev = l
         self.break_lineno = None
     # end def __init__
+
+    def __getattr__ (self, name):
+        if name.startswith ('cmd_') or name.startswith ('fun_'):
+            return getattr (self.screen, name)
+        raise AttributeError (name)
+    # end def __getattr__
 
     @property
     def exec_condition (self):
@@ -683,9 +886,10 @@ class Interpreter:
             , file = sys.stderr
             )
         if self.onerr:
-            self.next    = self.onerr
-            self.resume  = self.onerr
-            self.onerr   = None
+            self.next      = self.onerr
+            self.resume_on = self.onerr
+            self.resume    = self.context # to be able to retry statement
+            self.onerr     = None
         else:
             self.err_seen = True
         self.context  = None
@@ -712,6 +916,8 @@ class Interpreter:
                 return
             name = line [0].__name__.split ('_', 1) [-1]
             if self.exec_condition or name in self.skip_mode_commands:
+                #if line [0].__name__ == 'cmd_deffn':
+                #    import pdb; pdb.set_trace ()
                 try:
                     line [0] (*line [1:])
                 except ex as err:
@@ -728,6 +934,27 @@ class Interpreter:
         return self.files [fhandle].eof ()
     # end def fun_eof
 
+    def fun_fn (self, fname, exprlist):
+        """ Temporarily bind function args to values from exprlist then
+            call the function, then restore args.
+        """
+        #if fname == 'STRCNTR$':
+        #    import pdb; pdb.set_trace ()
+        varlist, expr = self.functions [fname]
+        oldval = {}
+        for ex, vname in zip (exprlist (), varlist):
+            if vname in self.var:
+                oldval [vname] = self.var [vname]
+            self.var [vname] = ex
+        retval = expr ()
+        for vname in varlist:
+            if vname in oldval:
+                self.var [vname] = oldval [vname]
+            else:
+                del self.var [vname]
+        return retval
+    # end def fun_fn
+
     # COMMANDS
 
     def cmd_assign (self, lhs, expr):
@@ -737,6 +964,10 @@ class Interpreter:
             result = expr
         lhs ().set (result)
     # end def cmd_assign
+
+    def cmd_call (self, var):
+        self.raise_error ('CALL not implemented')
+    # end def cmd_call
 
     def cmd_close (self, fhandle = None):
         """ Seems a missing file handle closes all files
@@ -761,9 +992,10 @@ class Interpreter:
         self.col = 0
     # end def cmd_cls
 
-    def cmd_color (self, intlist):
-        pass
-    # end def cmd_color
+    def cmd_deffn (self, fname, varlist, expr):
+        import pdb; pdb.set_trace ()
+        self.functions [fname] = (varlist, expr)
+    # end def cmd_deffn
 
     def cmd_defint (self, vars):
         for v in vars:
@@ -810,6 +1042,10 @@ class Interpreter:
         self._ifclause_check ()
         self.stack.pop ()
     # end def cmd_endif
+
+    def cmd_error (self, expr):
+        self.raise_error ('Error %d' % int (expr))
+    # end def cmd_error
 
     def cmd_field (self, fhandle, fieldlist):
         fhandle = to_fhandle (fhandle)
@@ -916,6 +1152,14 @@ class Interpreter:
             lhs.set (value)
     # end def cmd_input
 
+    def cmd_keyoff (self):
+        """ Command 'KEY OFF' handled by lexer
+            This is supposed to turn off a list of function-key macros
+            at the bottom of the screen. We do nothing.
+        """
+        pass
+    # end def cmd_keyoff
+
     def cmd_kill (self, expr):
         s = expr ()
         if not isinstance (s, str):
@@ -927,14 +1171,12 @@ class Interpreter:
     # end def cmd_kill
 
     def cmd_line_input (self, fhandle, lhs):
+        file = sys.stdout
+        if fhandle is not None:
+            file = self.files [fhandle]
         lhs = lhs ()
-        lhs.set (self.files [fhandle].readline () [:255])
+        lhs.set (file.readline () [:255])
     # end def cmd_line_input
-
-    def cmd_locate (self, num):
-        """ Probably positions cursor """
-        print ('\r', end = '')
-    # end def cmd_locate
 
     def cmd_lset (self, lhs, expr):
         """ According to pcbasic docs lset will do nothing if the
@@ -1044,7 +1286,7 @@ class Interpreter:
     # end def cmd_open
 
     def cmd_print (self, printlist, fhandle = None, using = False):
-        file = sys.stdout
+        file = None
         if fhandle is not None:
             file = self.files [fhandle].f
         l   = []
@@ -1079,7 +1321,10 @@ class Interpreter:
             self.col = 0
         else:
             end = ''
-        print (''.join (l), file = file, end = end)
+        if file is None:
+            self.screen.cmd_print (''.join (l), end = end)
+        else:
+            print (''.join (l), file = file, end = end)
     # end def cmd_print
 
     def cmd_put (self, fhandle, recno = None):
@@ -1113,7 +1358,8 @@ class Interpreter:
 
     def cmd_read (self, vars):
         for lhs in vars:
-            result = self.data.pop (0)
+            result = self.data [self.data_ptr]
+            self.data_ptr += 1
             lhs ().set (result)
     # end def cmd_read
 
@@ -1121,23 +1367,44 @@ class Interpreter:
         pass
     # end def cmd_rem
 
+    def cmd_reset (self):
+        self.cmd_close ()
+    # end def cmd_reset
+
+    def cmd_restore (self, lineno = None):
+        if lineno is not None:
+            raise NotImplementedError ('RESTORE with line number unsupported')
+        self.data_ptr = 0
+    # end def cmd_restore
+
     def cmd_resume (self, nextline):
         if not self.resume:
             self.raise_error ('RESUME without error')
         self.context = None
-        self.next    = (int (nextline), 0)
-        self.onerr   = self.resume
-        self.resume  = None
+        if nextline == 'NEXT':
+            self.next  = self.nextline.get (self.resume)
+        elif nextline == 0:
+            self.next  = self.resume
+        else:
+            self.next  = (int (nextline), 0)
+        self.onerr     = self.resume_on
+        self.resume    = None
+        self.resume_on = None
     # end def cmd_resume
 
-    def cmd_return (self):
+    def cmd_return (self, lineno):
         if not self.gstack:
             self.raise_error ('RETURN without GOSUB')
             return
         next = self.gstack.pop ()
-        next.restore_context ()
-        if next.cmdlist:
-            self.exec_cmdlist (next.cmdlist, next.cmdidx + 1)
+        if lineno is None:
+            next.restore_context ()
+            if next.cmdlist:
+                self.exec_cmdlist (next.cmdlist, next.cmdidx + 1)
+        else:
+            self.lineno    = lineno
+            self.sublineno = 0
+            self.next = self.nextline.get ((self.lineno, self.sublineno))
     # end def cmd_return
 
     def cmd_rset (self, lhs, expr):
@@ -1163,6 +1430,10 @@ class Interpreter:
             expr = expr [:len (v)]
         lhs.set (expr)
     # end def cmd_rset
+
+    def cmd_shell (self, expr):
+        self.raise_error ('Shell command not supported')
+    # end def cmd_shell
 
     def cmd_wend (self):
         errmsg = 'WEND without WHILE'
@@ -1200,8 +1471,9 @@ class Interpreter:
         ( ('left', 'AND', 'OR')
         , ('left', 'LT',  'GT', 'LE', 'GE', 'NE', 'EQ')
         , ('left', 'PLUS',  'MINUS')
-        , ('left', 'TIMES', 'DIVIDE', 'MOD')
+        , ('left', 'TIMES', 'DIVIDE', 'MOD', 'INTDIV')
         , ('left', 'EXPO')
+        , ('right', 'UMINUS')
         )
 
     def p_error (self, p):
@@ -1228,16 +1500,20 @@ class Interpreter:
     def p_stmt (self, p):
         """
             simple-statement : assignment-statement
+                             | call-statement
+                             | circle-statement
                              | close-statement
                              | cls-statement
                              | color-statement
                              | data-statement
+                             | def-statement
                              | defint-statement
                              | defsng-statement
                              | dim-statement
                              | else-statement
                              | endif-statement
                              | end-statement
+                             | error-statement
                              | field-statement
                              | for-statement
                              | get-statement
@@ -1246,7 +1522,9 @@ class Interpreter:
                              | if-start-statement
                              | if-statement
                              | input-statement
+                             | key-statement
                              | kill-statement
+                             | line-statement
                              | line-input-statement
                              | locate-statement
                              | lset-statement
@@ -1257,14 +1535,21 @@ class Interpreter:
                              | ongoto-statement
                              | open-statement
                              | print-statement
+                             | pset-statement
                              | put-statement
                              | read-statement
                              | rem-statement
+                             | reset-statement
+                             | restore-statement
                              | resume-statement
                              | return-statement
                              | rset-statement
+                             | shell-statement
+                             | screen-statement
                              | wend-statement
                              | while-statement
+                             | width-statement
+                             | window-statement
                              | write-statement
 
         """
@@ -1288,6 +1573,40 @@ class Interpreter:
         p [0] = (p [1],)
     # end def p_cls_statement
 
+    def p_call_statement (self, p):
+        """
+            call-statement : CALL VAR
+        """
+        p [0] = [p [1], p [2]]
+    # end def p_call_statement
+
+    def p_circle_opt (self, p):
+        """
+            circle-opt :
+                       | COMMA opt-expr
+                       | COMMA opt-expr COMMA opt-expr
+                       | COMMA opt-expr COMMA opt-expr COMMA opt-expr
+                       | COMMA opt-expr COMMA opt-expr COMMA opt-expr COMMA expr
+        """
+        p [0] = []
+        if len (p) > 2:
+            p [0].append (p [2])
+        if len (p) > 4:
+            p [0].append (p [4])
+        if len (p) > 6:
+            p [0].append (p [6])
+        if len (p) > 8:
+            p [0].append (p [8])
+    # end def p_circle_opt
+
+    def p_circle_statement (self, p):
+        """
+            circle-statement : CIRCLE LPAREN expr COMMA expr RPAREN COMMA expr \
+                               circle-opt
+        """
+        p [0] = [p [1], p [3], p [5], p [8], p [9]]
+    # end def p_circle_statement
+
     def p_close_statement (self, p):
         """
             close-statement : CLOSE
@@ -1302,7 +1621,7 @@ class Interpreter:
 
     def p_color_statement (self, p):
         """
-            color-statement : COLOR intlist
+            color-statement : COLOR exprlist
         """
         p [0] = [p [1], p [2]]
     # end def p_color_statement
@@ -1316,6 +1635,21 @@ class Interpreter:
             self.data.append (d)
         p [0] = ('REM',)
     # end def p_data_statement
+
+    def p_def_statement (self, p):
+        """
+            def-statement : DEF FNFUNCTION LPAREN varlist RPAREN EQ expr
+                          | DEF VAR VAR LPAREN varlist RPAREN EQ expr
+        """
+        #if p [2] == 'FNSTRCNTR$':
+        #    import pdb; pdb.set_trace ()
+        if len (p) == 9:
+            if p [2] != 'FN':
+                self.raise_error ('Invalid DEF FN command')
+            p [0] = ['deffn', p [3], p [5], p [8]]
+        else:
+            p [0] = ['deffn', p [2][2:], p [4], p [7]]
+    # end def p_defint_statement
 
     def p_defint_statement (self, p):
         """
@@ -1387,21 +1721,18 @@ class Interpreter:
         p [0] = ['endif']
     # end def p_endif_statement
 
-    def p_expression_literal (self, p):
-        """
-            expr : literal
-        """
-        p1 = p [1]
-        def x ():
-            return p1
-        p [0] = x
-    # end def p_expression_literal
-
     def p_expression_function_0 (self, p):
         """
             expr : INKEY
+                 | CSRLIN
         """
-        fun = fun_inkey
+        fn = p [1].lower ()
+        if fn == 'inkey$':
+            fun = self.screen.fun_inkey
+        elif fn == 'csrlin':
+            fun = self.screen.fun_csrlin
+        else:
+            assert 0
         def x ():
             return fun ()
         p [0] = x
@@ -1409,27 +1740,31 @@ class Interpreter:
 
     def p_expression_function (self, p):
         """
-            expr : ABS LPAREN expr RPAREN
-                 | ATN LPAREN expr RPAREN
-                 | CHR LPAREN expr RPAREN
-                 | COS LPAREN expr RPAREN
-                 | CVI LPAREN expr RPAREN
-                 | CVS LPAREN expr RPAREN
-                 | EOF LPAREN expr RPAREN
-                 | FRP LPAREN expr RPAREN
-                 | INT LPAREN expr RPAREN
-                 | LOG LPAREN expr RPAREN
-                 | MKI LPAREN expr RPAREN
-                 | MKS LPAREN expr RPAREN
-                 | SGN LPAREN expr RPAREN
-                 | SIN LPAREN expr RPAREN
-                 | SQR LPAREN expr RPAREN
-                 | STR LPAREN expr RPAREN
-                 | TAB LPAREN expr RPAREN
-                 | VAL LPAREN expr RPAREN
+            expr : ABS  LPAREN expr RPAREN
+                 | ASC  LPAREN expr RPAREN
+                 | ATN  LPAREN expr RPAREN
+                 | CHR  LPAREN expr RPAREN
+                 | COS  LPAREN expr RPAREN
+                 | CVI  LPAREN expr RPAREN
+                 | CVS  LPAREN expr RPAREN
+                 | EOF  LPAREN expr RPAREN
+                 | FRP  LPAREN expr RPAREN
+                 | INT  LPAREN expr RPAREN
+                 | LEN  LPAREN expr RPAREN
+                 | LOG  LPAREN expr RPAREN
+                 | MKI  LPAREN expr RPAREN
+                 | MKS  LPAREN expr RPAREN
+                 | SGN  LPAREN expr RPAREN
+                 | SIN  LPAREN expr RPAREN
+                 | SQR  LPAREN expr RPAREN
+                 | STR  LPAREN expr RPAREN
+                 | TAB  LPAREN expr RPAREN
+                 | VAL  LPAREN expr RPAREN
         """
         fn = p [1].lower ()
-        if fn == 'chr$':
+        if fn == 'asc':
+            fun = ord
+        elif fn == 'chr$':
             fun = fun_chr
         elif fn == 'cvi':
             fun = fun_cvi
@@ -1441,6 +1776,8 @@ class Interpreter:
             fun = fun_fractional_part
         elif fn == 'int':
             fun = int
+        elif fn == 'len':
+            fun = len
         elif fn == 'mki$':
             fun = fun_mki
         elif fn == 'mks$':
@@ -1510,6 +1847,38 @@ class Interpreter:
         p [0] = x
     # end def p_expression_function_3
 
+    def p_expression_indexed_array (self, p):
+        """
+            expr : VAR LPAREN exprlist RPAREN
+        """
+        p1 = p [1]
+        p3 = p [3]
+        def x ():
+            r = [int (k) for k in p3 ()]
+            return self.dim [p1][*r]
+        p [0] = x
+    # end def p_expression_indexed_array
+
+    def p_expression_literal (self, p):
+        """
+            expr : literal
+        """
+        p1 = p [1]
+        def x ():
+            return p1
+        p [0] = x
+    # end def p_expression_literal
+
+    def p_expression_not (self, p):
+        """
+            expr : NOT expr
+        """
+        p2 = p [2]
+        def x ():
+            return not (p2 ())
+        p [0] = x
+    # end def p_expression_not
+
     def p_expression_paren (self, p):
         """
             expr : LPAREN expr RPAREN
@@ -1533,6 +1902,7 @@ class Interpreter:
                  | expr AND    expr
                  | expr OR     expr
                  | expr EXPO   expr
+                 | expr INTDIV expr
         """
         f1 = p [1]
         f3 = p [3]
@@ -1578,18 +1948,32 @@ class Interpreter:
         elif p [2] == '^':
             def x ():
                 return f1 () ** f3 ()
+        elif p [2] == '\\':
+            def x ():
+                return f1 () // f3 ()
         p [0] = x
     # end def p_expression_twoop
 
-    def p_expression_unaryminus (self, p):
+    def p_expression_uminus (self, p):
         """
-            expr : MINUS expr
+            expr : MINUS expr %prec UMINUS
         """
         p2 = p [2]
         def x ():
             return - p2 ()
         p [0] = x
-    # end def p_expression_unaryminus
+    # end def p_expression_uminus
+
+    def p_expression_userdefined_function (self, p):
+        """
+            expr : FNFUNCTION LPAREN exprlist RPAREN
+        """
+        fn = p [1][2:]
+        p3 = p [3]
+        def x ():
+            return self.fun_fn (fn, p3)
+        p [0] = x
+    # end def p_expression_userdefined_function
 
     def _var_helper (self, p1):
         default = 0.0
@@ -1610,18 +1994,6 @@ class Interpreter:
         p [0] = self._var_helper (p1)
     # end def p_expression_var
 
-    def p_expression_var_complex (self, p):
-        """
-            expr : VAR LPAREN exprlist RPAREN
-        """
-        p1 = p [1]
-        p3 = p [3]
-        def x ():
-            r = [int (k) for k in p3 ()]
-            return self.dim [p1][*r]
-        p [0] = x
-    # end def p_expression_var_complex
-
     def p_exprlist (self, p):
         """
             exprlist : expr
@@ -1637,6 +2009,13 @@ class Interpreter:
                 return p1 () + [p3 ()]
         p [0] = x
     # end def p_exprlist
+
+    def p_error_statement (self, p):
+        """
+            error-statement : ERROR expr
+        """
+        p [0] = (p [1], p [2])
+    # end def p_error_statement
 
     def p_field_statement (self, p):
         """
@@ -1674,8 +2053,14 @@ class Interpreter:
         """
             get-statement : GET FHANDLE
                           | GET NUMBER
+                          | GET \
+                            LPAREN expr COMMA expr RPAREN MINUS \
+                            LPAREN expr COMMA expr RPAREN COMMA VAR
         """
-        p [0] = (p [1], p [2])
+        if len (p) == 3:
+            p [0] = (p [1], p [2])
+        else:
+            p [0] = ['get_graphics', p [14], p [3], p [5], p [9], p [11]]
     # end def p_get_statement
 
     def p_goto_statement (self, p):
@@ -1725,8 +2110,12 @@ class Interpreter:
         """
             input-statement : INPUT STRING_SQ SEMIC varlist-complex
                             | INPUT STRING_DQ SEMIC varlist-complex
+                            | INPUT SEMIC varlist-complex
         """
-        p [0] = (p [1], p [4], p [2])
+        if len (p) == 4:
+            p [0] = (p [1], p [3], '')
+        else:
+            p [0] = (p [1], p [4], p [2])
     # end def p_input_statement
 
     def p_input_statement_multi (self, p):
@@ -1743,13 +2132,28 @@ class Interpreter:
     def p_intlist (self, p):
         """
             intlist : NUMBER
+                    | HEXNUMBER
                     | intlist COMMA NUMBER
+                    | intlist COMMA HEXNUMBER
         """
         if len (p) == 2:
             p [0] = [p [1]]
         else:
             p [0] = p [1] + [p [3]]
     # end def p_intlist
+
+    def p_key_statement (self, p):
+        """
+            key-statement : KEY expr COMMA expr
+                          | KEY VAR
+        """
+        if len (p) == 3:
+            if p [2] != 'OFF':
+                self.raise_error ('Expected KEY OFF here')
+            p [0] = ['keyoff']
+        else:
+            p [0] = [p [1], p [2], p [4]]
+    # end def p_key_statement
 
     def p_kill_statement (self, p):
         """
@@ -1775,16 +2179,80 @@ class Interpreter:
         p [0] = x
     # end def p_lhs
 
+    def p_line_attr (self, p):
+        """
+            line-attr :
+                      | expr
+        """
+        if len (p) == 1:
+            p [0] = None
+        else:
+            p [0] = p [1]
+    # end def p_line_attr
+
+    def p_line_bf (self, p):
+        """
+            line-bf :
+                    | VAR
+                    | VAR VAR
+        """
+        if len (p) == 1:
+            p [0] = None
+        elif len (p) == 2:
+            if p [1] not in ('B', 'BF'):
+                self.raise_error ('Invalid B option: %s' % p [1])
+            p [0] = p [1]
+        else:
+            if p [1] != 'B' or p [2] != 'F':
+                self.raise_error ('Invalid B/F option: %s/%s' % tuple (p [1:2]))
+            p [0] = 'BF'
+    # end def p_line_bf
+
+    def p_line_opt (self, p):
+        """
+            line-opt :
+                     | COMMA line-attr
+                     | COMMA line-attr COMMA line-bf
+                     | COMMA line-attr COMMA line-bf COMMA expr
+        """
+        if len (p) == 1:
+            p [0] = []
+        else:
+            p [0] = [p [2]]
+            if len (p) > 3:
+                p [0].append (p [4])
+            if len (p) > 5:
+                p [0].append (p [6])
+    # end def p_line_opt
+
+    def p_line_statement (self, p):
+        """
+            line-statement : LINE LPAREN expr COMMA expr RPAREN MINUS \
+                                  LPAREN expr COMMA expr RPAREN line-opt
+                           | LINE MINUS \
+                                  LPAREN expr COMMA expr RPAREN line-opt
+        """
+        if len (p) == 9:
+            p [0] = [p [1], None, None, p [4], p [6], p [8]]
+        else:
+            p [0] = [p [1], p [3], p [5], p [9], p [11], p [13]]
+    # end def p_line_statement
+
     def p_line_input_statement (self, p):
         """
             line-input-statement : LINE INPUT FHANDLE COMMA lhs
+                                 | LINE INPUT SEMIC lhs
         """
-        p [0] = ['line_input', p [3], p [5]]
+        if len (p) == 5:
+            p [0] = ['line_input', None, p [4]]
+        else:
+            p [0] = ['line_input', p [3], p [5]]
     # end def p_line_input_statement
 
     def p_literal (self, p):
         """
             literal : NUMBER
+                    | HEXNUMBER
                     | STRING_DQ
                     | STRING_SQ
         """
@@ -1797,8 +2265,8 @@ class Interpreter:
 
     def p_literal_list (self, p):
         """
-            literal-list : literal
-                         | literal-list COMMA literal
+            literal-list : literal-neg
+                         | literal-list COMMA literal-neg
         """
         if len (p) == 2:
             p [0] = [p [1]]
@@ -1806,11 +2274,26 @@ class Interpreter:
             p [0] = p [1] + [p [3]]
     # end def p_literal_list
 
+    def p_literal_neg (self, p):
+        """
+            literal-neg : literal
+                        | MINUS NUMBER
+        """
+        if len (p) == 3:
+            p [0] = -p [2]
+        else:
+            p [0] = p [1]
+    # end def p_literal_neg
+
     def p_locate_statement (self, p):
         """
-            locate-statement : LOCATE CSRLIN COMMA NUMBER
+            locate-statement : LOCATE opt-expr COMMA opt-expr
+                             | LOCATE opt-expr COMMA opt-expr COMMA exprlist
         """
-        p [0] = (p [1], p [4])
+        if len (p) == 5:
+            p [0] = (p [1], p [2], p [4])
+        else:
+            p [0] = (p [1], p [2], p [4], p [6])
     # end def p_locate_statement
 
     def p_lset_statement (self, p):
@@ -1872,12 +2355,17 @@ class Interpreter:
     def p_open_statement_bin (self, p):
         """
             open-statement : OPEN expr AS FHANDLE LEN EQ expr
+                           | OPEN expr AS FHANDLE
                            | OPEN expr FOR RANDOM AS FHANDLE LEN EQ expr
                            | OPEN expr FOR OUTPUT AS FHANDLE LEN EQ expr
                            | OPEN expr FOR INPUT  AS FHANDLE LEN EQ expr
         """
         expr = p [2]
-        if len (p) == 8:
+        if len (p) == 5:
+            fhandle = p [4]
+            length  = None
+            forwhat = None
+        elif len (p) == 8:
             fhandle = p [4]
             length  = p [7]
             forwhat = None
@@ -1888,21 +2376,36 @@ class Interpreter:
         p [0] = (p [1], expr, forwhat, fhandle, length)
     # end def p_open_statement_bin
 
+    def p_optional_expression (self, p):
+        """
+            opt-expr : 
+                     | expr
+        """
+        if len (p) == 1:
+            p [0] = None
+        else:
+            p [0] = p [1]
+    # end def p_optional_expression
+
     def p_print_statement (self, p):
         """
             print-statement : PRINT printlist
                             | PRINT USING printlist
                             | PRINT FHANDLE COMMA printlist
                             | PRINT FHANDLE COMMA USING printlist
+                            | QMARK printlist
+                            | QMARK USING printlist
+                            | QMARK FHANDLE COMMA printlist
+                            | QMARK FHANDLE COMMA USING printlist
         """
         if len (p) == 3:
-            p [0] = (p [1], p [2])
+            p [0] = ('PRINT', p [2])
         elif len (p) == 4:
-            p [0] = (p [1], p [3], None, True)
+            p [0] = ('PRINT', p [3], None, True)
         elif len (p) == 5:
-            p [0] = (p [1], p [4], p [2])
+            p [0] = ('PRINT', p [4], p [2])
         else:
-            p [0] = (p [1], p [5], p [2], True)
+            p [0] = ('PRINT', p [5], p [2], True)
     # end def p_print_statement
 
     def p_printlist (self, p):
@@ -1940,17 +2443,43 @@ class Interpreter:
         p [0] = x
     # end def p_printlist
 
+    def p_pset_statement (self, p):
+        """
+            pset-statement : PSET LPAREN expr COMMA expr RPAREN
+        """
+        p [0] = [p [1], p [3], p [5]]
+    # end def p_pset_statement
+
+    def p_put_option (self, p):
+        """
+            put-option :
+                       | COMMA PSET
+                       | COMMA PRESET
+                       | COMMA AND
+                       | COMMA OR
+                       | COMMA XOR
+        """
+        if len (p) == 1:
+            p [0] = None
+        else:
+            p [0] = p [2]
+    # end def p_put_option
+
     def p_put_statement (self, p):
         """
             put-statement : PUT FHANDLE
                           | PUT NUMBER
                           | PUT FHANDLE COMMA NUMBER
                           | PUT NUMBER  COMMA NUMBER
+                          | PUT LPAREN expr COMMA expr RPAREN \
+                            COMMA VAR put-option
         """
         if len (p) == 3:
             p [0] = (p [1], p [2])
-        else:
+        elif len (p) == 5:
             p [0] = (p [1], p [2], p [4])
+        else:
+            p [0] = ('put_graphics', p [3], p [5], p [7], p [8])
     # end def p_put_statement
 
     def p_read_statement (self, p):
@@ -1967,18 +2496,45 @@ class Interpreter:
         p [0] = [p [1]]
     # end def p_rem_statement
 
+    def p_reset_statement (self, p):
+        """
+            reset-statement : RESET
+        """
+        p [0] = [p [1]]
+    # end def p_reset_statement
+
+    def p_restore_statement (self, p):
+        """
+            restore-statement : RESTORE NUMBER
+                              | RESTORE
+        """
+        if len (p) == 2:
+            p [0] = [p [1], None]
+        else:
+            p [0] = [p [1], p [2]]
+    # end def p_restore_statement
+
     def p_resume_statement (self, p):
         """
             resume-statement : RESUME NUMBER
+                             | RESUME
+                             | RESUME NEXT
         """
-        p [0] = [p [1], p [2]]
+        p2 = 0
+        if len (p) > 2:
+            p2 = p [2]
+        p [0] = [p [1], p2]
     # end def p_resume_statement
 
     def p_return_statement (self, p):
         """
             return-statement : RETURN
+                             | RETURN NUMBER
         """
-        p [0] = [p [1]]
+        line = None
+        if len (p) > 2:
+            line = p [2]
+        p [0] = [p [1], line]
     # end def p_return_statement
 
     def p_rset_statement (self, p):
@@ -1987,6 +2543,20 @@ class Interpreter:
         """
         p [0] = (p [1], p [2], p [4])
     # end def p_rset_statement
+
+    def p_shell_statement (self, p):
+        """
+            shell-statement : SHELL expr
+        """
+        p [0] = (p [1], p [2])
+    # end def p_shell_statement
+
+    def p_screen_statement (self, p):
+        """
+            screen-statement : SCREEN expr COMMA expr COMMA expr COMMA expr
+        """
+        p [0] = (p [1], p [2], p [4], p [6], p [8])
+    # end def p_screen_statement
 
     def p_varlist (self, p):
         """
@@ -2042,6 +2612,26 @@ class Interpreter:
         p [0] = [p [1], p [2]]
     # end def p_while_statement
 
+    def p_width_statement (self, p):
+        """
+            width-statement : WIDTH expr
+        """
+        p [0] = [p [1], p [2]]
+    # end def p_width_statement
+
+    def p_window_statement (self, p):
+        """
+            window-statement : WINDOW
+                             | WINDOW LPAREN expr COMMA expr RPAREN \
+                                      MINUS                         \
+                                      LPAREN expr COMMA expr RPAREN
+        """
+        if len (p) == 2:
+            p [0] = [p [1]]
+        else:
+            p [0] = [p [1], p [3], p [5], p [9], p [11]]
+    # end def p_window_statement
+
     def p_write (self, p):
         """
             write-statement : WRITE FHANDLE COMMA exprlist
@@ -2076,6 +2666,12 @@ def main (argv = sys.argv [1:]):
         , type    = int
         , action  = 'append'
         , default = []
+        )
+    cmd.add_argument \
+        ( '-S', '--screen'
+        , help    = 'Screen emulation'
+        , choices = ('None', 'tkinter')
+        , default = 'None'
         )
     args = cmd.parse_args (argv)
     interpreter = Interpreter (args)

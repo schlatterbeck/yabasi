@@ -6,8 +6,10 @@ class Tokenizer:
 
     funcs = \
         [ 'ABS'
+        , 'ASC'
         , 'ATN'
         , 'COS'
+        , 'CSRLIN'
         , 'CVI'
         , 'CVS'
         , 'EOF'
@@ -38,11 +40,13 @@ class Tokenizer:
         [ 'AND'
         , 'APPEND'
         , 'AS'
+        , 'CALL'
+        , 'CIRCLE'
         , 'CLOSE'
         , 'CLS'
         , 'COLOR'
-        , 'CSRLIN'
         , 'DATA'
+        , 'DEF'
         , 'DEFINT'
         , 'DEFSNG'
         , 'DIM'
@@ -56,6 +60,7 @@ class Tokenizer:
         , 'GOTO'
         , 'IF'
         , 'INPUT'
+        , 'KEY'
         , 'KILL'
         , 'LEN'
         , 'LINE'
@@ -63,18 +68,25 @@ class Tokenizer:
         , 'LSET'
         , 'MOD'
         , 'NEXT'
+        , 'NOT'
         , 'ON'
         , 'OPEN'
         , 'OR'
         , 'OUTPUT'
+        , 'PRESET'
         , 'PRINT'
+        , 'PSET'
         , 'PUT'
         , 'RANDOM'
         , 'READ'
         , 'REM'
+        , 'RESET'
+        , 'RESTORE'
         , 'RESUME'
         , 'RETURN'
         , 'RSET'
+        , 'SCREEN'
+        , 'SHELL'
         , 'STEP'
         , 'SYSTEM'
         , 'THEN'
@@ -82,7 +94,10 @@ class Tokenizer:
         , 'USING'
         , 'WHILE'
         , 'WEND'
+        , 'WIDTH'
+        , 'WINDOW'
         , 'WRITE'
+        , 'XOR'
         ]
     reserved = dict ((k, k) for k in reserved)
 
@@ -93,8 +108,11 @@ class Tokenizer:
         , 'EQ'
         , 'EXPO'
         , 'FHANDLE'
+        , 'FNFUNCTION'
         , 'GE'
         , 'GT'
+        , 'HEXNUMBER'
+        , 'INTDIV'
         , 'LE'
         , 'LPAREN'
         , 'LT'
@@ -102,6 +120,7 @@ class Tokenizer:
         , 'NE'
         , 'NUMBER'
         , 'PLUS'
+        , 'QMARK'
         , 'RPAREN'
         , 'SEMIC'
         , 'STRING_DQ'
@@ -115,32 +134,46 @@ class Tokenizer:
     t_DIVIDE  = r'/'
     t_EQ      = r'='
     t_EXPO    = r'\^'
-    t_FHANDLE = r'[#][0-9]'
+    t_FHANDLE = r'[#]\s*[0-9]'
     t_GE      = r'>='
     t_GT      = r'>'
+    t_INTDIV  = r'\\'
     t_LE      = r'<='
     t_LPAREN  = r'[(]'
     t_LT      = r'<'
     t_MINUS   = r'-'
     t_NE      = r'(<>)|(><)'
     t_PLUS    = r'\+'
+    t_QMARK   = r'[?]'
     t_RPAREN  = r'[)]'
     t_SEMIC   = r';'
     t_TIMES   = r'\*'
 
     t_ignore  = '\n\t '
 
+    def t_FNFUNCTION (self, t):
+        r'FN[A-Z][0-9A-Z.]*[#%!$]?'
+        return t
+    # end def t_FNFUNCTION
+
+    def t_HEXNUMBER (self, t):
+        r'&h[0-9A-Fa-f]+'
+        v = int (t.value [2:], 16)
+        t.value = v
+        return t
+    # end def t_HEXNUMBER
+
     def t_NUMBER (self, t):
-        r'([0-9]*[.])?[0-9]+([eE][+-]?[0-9]+)?[#!]?'
+        r'([0-9]*[.]\s*)?[0-9]+([eE][+-]?[0-9]+)?[#%!]?'
         v = t.value
-        if v.endswith ('#') or v.endswith ('!'):
-            if v.endswith ('!'):
+        if v.endswith ('#') or v.endswith ('!') or v.endswith ('%'):
+            if v.endswith ('!') or v.endswith('%'):
                 assert v [:-1].isdecimal ()
             v = v [:-1]
         if v.isdecimal ():
             t.value = int (v)
         else:
-            t.value = float (v)
+            t.value = float (v.replace (' ', ''))
         return t
     # end def t_NUMBER
 
@@ -159,7 +192,7 @@ class Tokenizer:
     # end def t_STRING_SQ
 
     def t_VAR (self, t):
-        r'[A-Z]+[0-9A-Z]*[!%$]?'
+        r'[A-Z]+[0-9A-Z.]*[!%$]?'
         if t.value in self.funcs:
             t.type = self.funcs [t.value]
             return t
