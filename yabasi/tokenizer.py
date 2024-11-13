@@ -33,7 +33,9 @@ class Tokenizer:
         , 'MKI$'
         , 'MKS$'
         , 'RIGHT$'
+        , 'SPACE$'
         , 'STR$'
+        , 'STRING$'
         ]
 
     reserved = \

@@ -102,11 +102,19 @@ def fun_right (expr1, expr2):
     return expr1 [-expr2:]
 # end def fun_right
 
+def fun_space (expr):
+    return ' ' * int (expr)
+# end def fun_space
+
 def fun_str (expr):
     if isinstance (expr, float):
         return format_float (expr).rstrip ()
     return str (expr)
 # end def fun_str
+
+def fun_string (count, s):
+    return s * count
+# end def fun_string
 
 #def _fmt_float (v, fmt = '%9f'):
 def _fmt_float (v, fmt = '{:#.9g}'):
@@ -219,7 +227,7 @@ class Screen:
     # end def cmd_screen
 
     def cmd_width (self, expr):
-        if int (expr) != 80:
+        if int (expr ()) != 80:
             raise NotImplementedError ('Screen width != 80 unsupported')
     # end def cmd_width
 
@@ -229,12 +237,12 @@ class Screen:
 
     # Functions
 
-    def fun_csrlin ():
+    def fun_csrlin (self):
         """ Current row of cursor """
         return 0
     # end def fun_csrlin
 
-    def fun_inkey ():
+    def fun_inkey (self):
         """ In the programs we support with the simple screen, INKEY$ is
             used for clearing the input buffer, no need to do this with,
             e.g., cooked terminal mode on Linux. So we always return an
@@ -335,12 +343,12 @@ class Screen_Tkinter (Screen):
 
     # Functions called from outside
 
-    def fun_csrlin ():
+    def fun_csrlin (self):
         """ Current row of cursor """
         return self.cursor [0]
     # end def fun_csrlin
 
-    def fun_inkey ():
+    def fun_inkey (self):
         self.win.update ()
         if self.keys:
             return self.keys.pop (0) [1]
@@ -888,7 +896,7 @@ class Interpreter:
         if self.onerr:
             self.next      = self.onerr
             self.resume_on = self.onerr
-            self.resume    = self.context # to be able to retry statement
+            self.resume    = (self.lineno, self.sublineno)
             self.onerr     = None
         else:
             self.err_seen = True
@@ -993,7 +1001,6 @@ class Interpreter:
     # end def cmd_cls
 
     def cmd_deffn (self, fname, varlist, expr):
-        import pdb; pdb.set_trace ()
         self.functions [fname] = (varlist, expr)
     # end def cmd_deffn
 
@@ -1012,7 +1019,12 @@ class Interpreter:
     def cmd_dim (self, dimlist):
         for dentry in dimlist:
             v, l = dentry ()
-            self.dim [v] = np.zeros (l)
+            dtype = float
+            if v.endswith ('$'):
+                dtype = object
+            elif v.endswith ('%'):
+                dtype = int
+            self.dim [v] = np.zeros (l, dtype = dtype)
     # end def cmd_dim
 
     def _ifclause_check (self):
@@ -1740,26 +1752,27 @@ class Interpreter:
 
     def p_expression_function (self, p):
         """
-            expr : ABS  LPAREN expr RPAREN
-                 | ASC  LPAREN expr RPAREN
-                 | ATN  LPAREN expr RPAREN
-                 | CHR  LPAREN expr RPAREN
-                 | COS  LPAREN expr RPAREN
-                 | CVI  LPAREN expr RPAREN
-                 | CVS  LPAREN expr RPAREN
-                 | EOF  LPAREN expr RPAREN
-                 | FRP  LPAREN expr RPAREN
-                 | INT  LPAREN expr RPAREN
-                 | LEN  LPAREN expr RPAREN
-                 | LOG  LPAREN expr RPAREN
-                 | MKI  LPAREN expr RPAREN
-                 | MKS  LPAREN expr RPAREN
-                 | SGN  LPAREN expr RPAREN
-                 | SIN  LPAREN expr RPAREN
-                 | SQR  LPAREN expr RPAREN
-                 | STR  LPAREN expr RPAREN
-                 | TAB  LPAREN expr RPAREN
-                 | VAL  LPAREN expr RPAREN
+            expr : ABS   LPAREN expr RPAREN
+                 | ASC   LPAREN expr RPAREN
+                 | ATN   LPAREN expr RPAREN
+                 | CHR   LPAREN expr RPAREN
+                 | COS   LPAREN expr RPAREN
+                 | CVI   LPAREN expr RPAREN
+                 | CVS   LPAREN expr RPAREN
+                 | EOF   LPAREN expr RPAREN
+                 | FRP   LPAREN expr RPAREN
+                 | INT   LPAREN expr RPAREN
+                 | LEN   LPAREN expr RPAREN
+                 | LOG   LPAREN expr RPAREN
+                 | MKI   LPAREN expr RPAREN
+                 | MKS   LPAREN expr RPAREN
+                 | SGN   LPAREN expr RPAREN
+                 | SIN   LPAREN expr RPAREN
+                 | SPACE LPAREN expr RPAREN
+                 | SQR   LPAREN expr RPAREN
+                 | STR   LPAREN expr RPAREN
+                 | TAB   LPAREN expr RPAREN
+                 | VAL   LPAREN expr RPAREN
         """
         fn = p [1].lower ()
         if fn == 'asc':
@@ -1788,6 +1801,8 @@ class Interpreter:
             fun = self.fun_tab
         elif fn == 'val':
             fun = float
+        elif fn == 'space$':
+            fun = fun_space
         else:
             if fn == 'sgn':
                 fn = 'sign'
@@ -1804,15 +1819,19 @@ class Interpreter:
 
     def p_expression_function_2 (self, p):
         """
-            expr : LEFT  LPAREN expr COMMA expr RPAREN
-                 | RIGHT LPAREN expr COMMA expr RPAREN
+            expr : LEFT   LPAREN expr COMMA expr RPAREN
+                 | RIGHT  LPAREN expr COMMA expr RPAREN
+                 | STRING LPAREN expr COMMA expr RPAREN
         """
         fn = p [1].lower ()
         if fn == 'left$':
             fun = fun_left
-        else:
-            assert fn == 'right$'
+        elif fn == 'right$':
             fun = fun_right
+        elif fn == 'string$':
+            fun = fun_string
+        else:
+            assert 0
         p3 = p [3]
         p5 = p [5]
         def x ():
