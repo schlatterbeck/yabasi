@@ -26,6 +26,7 @@
 from ply import yacc
 from argparse import ArgumentParser
 from io import StringIO
+import itertools
 import tkinter
 import numpy as np
 import sys
@@ -551,17 +552,23 @@ class Stack_Entry:
     """
 
     def __init__ (self, parent, condition):
-        self.parent    = parent
-        self.condition = condition
-        self.stack     = None
+        self.parent        = parent
+        self.condition     = condition
+        self.stack         = None
+        self.need_continue = False
     # end def __init__
 
     def continue_context (self):
         if self.start.cmdidx:
-            self.parent.exec_cmdlist (self.start.cmdlist, self.start.cmdidx)
+            self.need_continue = True
         else:
             self.start.restore_context ()
     # end def continue_context
+
+    def exec (self):
+        self.need_continue = False
+        self.parent.exec_cmdlist (self.start.cmdlist, self.start.cmdidx)
+    # end def exec
 
     def set_start (self):
         if self.parent.context:
@@ -772,6 +779,15 @@ class Interpreter_Test:
         self.output  = StringIO ()
     # end def __init__
 
+    def stack_height (self):
+        height = 2
+        frame  = sys._getframe (height)
+        for height in itertools.count (height):
+            frame = frame.f_back
+            if not frame:
+                return height
+    # end def stack_height
+
 # end class Interpreter_Test
 
 class Interpreter:
@@ -920,6 +936,11 @@ class Interpreter:
             cmd = cmdlist [i]
             self.context = Context (self, cmdlist, i)
             cmd [0] (*cmd [1:])
+            if self.test and self.test.hook:
+                self.test.hook (self)
+            # Handle cmdlist continue at top level to avoid stack growth
+            if self.stack and self.stack.top.need_continue:
+                return
             # If there was a GOSUB stop execution of cmdlist
             if self.context is None:
                 return
@@ -992,12 +1013,12 @@ class Interpreter:
                 return
             name = line [0].__name__.split ('_', 1) [-1]
             if self.exec_condition or name in self.skip_mode_commands:
-                #if line [0].__name__ == 'cmd_deffn':
-                #    import pdb; pdb.set_trace ()
                 try:
                     line [0] (*line [1:])
                 except ex as err:
                     self.raise_error (err)
+            while self.stack and self.stack.top.need_continue:
+                self.stack.top.exec ()
             l = self.next
             if l:
                 self.lineno, self.sublineno = l
@@ -1015,8 +1036,6 @@ class Interpreter:
         """ Temporarily bind function args to values from exprlist then
             call the function, then restore args.
         """
-        #if fname == 'STRCNTR$':
-        #    import pdb; pdb.set_trace ()
         varlist, expr = self.functions [fname]
         oldval = {}
         for ex, vname in zip (exprlist (), varlist):
@@ -1725,8 +1744,6 @@ class Interpreter:
             def-statement : DEF FNFUNCTION LPAREN varlist RPAREN EQ expr
                           | DEF VAR VAR LPAREN varlist RPAREN EQ expr
         """
-        #if p [2] == 'FNSTRCNTR$':
-        #    import pdb; pdb.set_trace ()
         if len (p) == 9:
             if p [2] != 'FN':
                 self.raise_error ('Invalid DEF FN command')

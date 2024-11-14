@@ -23,6 +23,7 @@
 # SOFTWARE.
 # ****************************************************************************
 
+import sys
 import inspect
 from textwrap import dedent
 from yabasi.bas import Interpreter, options, Interpreter_Test
@@ -39,27 +40,106 @@ class Test_Base:
         args   = options (opt)
         caller = getattr (self, inspect.stack () [1][3])
         prg    = dedent (caller.__doc__).split ('\n')
-        t      = Interpreter_Test (prg, hook)
+        t      = self.itest = Interpreter_Test (prg, hook)
         bas    = Interpreter (args, t)
         bas.run ()
-        if expect:
-            assert expect == t.output.getvalue ()
+        if expect is not None:
+            assert t.output.getvalue () == expect
     # end def run_test
 
-    def test_while (self):
+    def stack_hook (self, interpreter):
+        # assert interpeter and python stacks don't grow
+        assert len (interpreter.stack.stack) <= 1
+        h = self.itest.stack_height ()
+        if self.pystack is None:
+            self.pystack = h
+        #print (h, self.pystack)
+        assert h < self.pystack + 5
+    # end def stack_hook
+
+    # Tests start here
+
+    def test_eof (self):
         """
-            10 I=0
-            20 WHILE I<5
-            30 I=I+1
-            40 PRINT I
-            50 WEND
+            100 OPEN "/dev/null" FOR INPUT AS #1 LEN=100
+            110 PRINT EOF(1)
+            120 CLOSE 1
+            130 OPEN "test/test_yabasi.py" FOR INPUT AS #1 LEN=20
+            140 PRINT EOF(1)
+            150 CLOSE 1
+            200 OPEN "/dev/null" FOR INPUT AS #1
+            210 PRINT EOF(1)
+            220 CLOSE 1
         """
-        def hook (interpreter):
-            # assert stack doesn't grow
-            assert len (interpreter.stack.stack) <= 1
-        # end def hook
-        self.run_test (' 1\n 2\n 3\n 4\n 5\n', hook)
-    # end def test_while
+        self.run_test ('True\nFalse\nTrue\n')
+    # end def test_eof
+
+    def test_multigosub (self):
+        """
+            10  REM HUHU
+            50  PRINT "HALLO"
+            100 IF 1 THEN GOSUB 200 : GOSUB 300 : GOSUB 400 : GOTO 800 : PRINT 'notreached'
+            110 PRINT "after gosubs, should not be reached"
+            120 GOTO 500
+            200 PRINT "In 200"
+            210 RETURN
+            300 PRINT "In 300"
+            310 RETURN
+            400 PRINT "In 400"
+            410 RETURN
+            500 GOSUB 200 : GOSUB 300 : GOSUB 400 : GOTO 900
+            600 PRINT 'notreached'
+            700 END
+            800 IF 1 THEN GOSUB 200 : GOSUB 300 : GOSUB 400
+            810 PRINT "AFTER second if"
+            820 GOTO 500
+            900 PRINT "After cmdlist"
+            910 GOSUB 200 : GOSUB 300 : GOSUB 400
+            920 PRINT "After 2nd cmdlist"
+            930 GOTO 700
+        """
+        gsb = 'In 200\nIn 300\nIn 400\n'
+        ret = ( 'HALLO\n' + gsb + gsb + 'AFTER second if\n' + gsb
+              + 'After cmdlist\n' + gsb + 'After 2nd cmdlist\n'
+              )
+        self.run_test (ret)
+    # end def test_multigosub
+
+    def test_nested_loop (self):
+        """
+            100 A%=2
+            110 WHILE A%<6 : A%=A%+1 : PRINT A% : FOR K=1 TO 2 : PRINT "K:";K : NEXT K : WEND : PRINT "HUHU"
+            120 PRINT "END 1st loop"
+            200 A%=3
+                WHILE A%<6
+                    A%=A%+1
+                    PRINT A%
+                    FOR K=1 TO 2
+                        PRINT "K:";K
+                    NEXT K
+                WEND
+                PRINT "THE END"
+        """
+        exp = []
+        for k in range (3, 7):
+            exp.append ('%d\nK:1\nK:2\n' % k)
+        exp.append ('HUHU\nEND 1st loop\n')
+        for k in range (4, 7):
+            exp.append ('%d\nK:1\nK:2\n' % k)
+        exp.append ('THE END\n')
+        self.run_test (''.join (exp))
+    # end def test_nested_loop
+
+    def test_onerr (self):
+        """
+            100 ON ERROR GOTO 500
+            120 OPEN "nonexisting" FOR INPUT AS #1
+            130 CLOSE #1
+            400 END
+            500 PRINT "ERROR"
+        """
+        self.run_test ('ERROR\n')
+    # end def test_onerr
 
     def test_onerr_resume (self):
         """
@@ -76,5 +156,51 @@ class Test_Base:
         """
         self.run_test (' 1\n 2\n 3\n 4\n')
     # end def test_onerr_resume
+
+    def test_print_semic (self):
+        """
+            100 PRINT ;1;2
+        """
+        self.run_test ('12\n')
+    # end def test_print_semic
+
+    def test_skip_next (self):
+        """
+            1 FOR I=1 TO 2
+            2 PRINT I
+            3 NEXT I
+            5 FOR I=20 TO 19
+            6 PRINT I
+            7 REM NEXT ZOPPEL
+            8 GOTO 50
+            9 NEXT I
+            10 PRINT CHR$(65)
+            40 END
+            50 NEXT J
+            60 END
+        """
+        self.run_test ('1\n2\nA\n')
+    # end def test_skip_next
+
+    def test_while (self):
+        """
+            10 I=0
+            20 WHILE I<5
+            30 I=I+1
+            40 PRINT I
+            50 WEND
+        """
+        self.pystack = None
+        self.run_test (' 1\n 2\n 3\n 4\n 5\n', self.stack_hook)
+    # end def test_while
+
+    def test_while_single_line (self):
+        """
+            10 I=0
+            20 WHILE I<5: I=I+1: PRINT I: WEND
+        """
+        self.pystack = None
+        self.run_test (' 1\n 2\n 3\n 4\n 5\n', self.stack_hook)
+    # end def test_while_single_line
 
 # end class Test_Base
