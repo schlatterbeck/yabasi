@@ -25,6 +25,7 @@
 
 from ply import yacc
 from argparse import ArgumentParser
+from io import StringIO
 import tkinter
 import numpy as np
 import sys
@@ -204,6 +205,10 @@ class Screen:
     """ Default screen emulation doing essentially nothing
     """
 
+    def __init__ (self, ofile):
+        self.ofile = ofile
+    # end def __init__
+
     # Commands
 
     def cmd_circle (self, x, y, r, opt):
@@ -234,7 +239,7 @@ class Screen:
     # end def cmd_locate
 
     def cmd_print (self, s, end = None):
-        print (s, end = end)
+        print (s, end = end, file = self.ofile)
     # end def cmd_print
 
     def cmd_pset (self, x, y):
@@ -280,7 +285,8 @@ class Screen_Tkinter (Screen):
     """ A tkinter based screen emulation
     """
 
-    def __init__ (self):
+    def __init__ (self, ofile):
+        self.ofile  = ofile
         self.win    = tkinter.Tk ()
         self.canvas = tkinter.Canvas (self.win)
         self.keys   = []
@@ -754,6 +760,20 @@ class Basic_File:
 
 # end class Basic_File
 
+class Interpreter_Test:
+    """ This is used for testing: redirecting output, optionally
+        redirecting input and passing the program as an iterable.
+    """
+
+    def __init__ (self, program, hook = None, input = None):
+        self.program = program
+        self.hook    = hook
+        self.input   = input
+        self.output  = StringIO ()
+    # end def __init__
+
+# end class Interpreter_Test
+
 class Interpreter:
     print_special = \
         { ',' : ('++,++', 'COMMA')
@@ -768,13 +788,16 @@ class Interpreter:
     skip_mode_commands = set \
         (('if_start', 'else', 'endif', 'for', 'next', 'while', 'wend'))
 
-    def __init__ (self, args):
+    def __init__ (self, args, test = None):
         self.args   = args
+        self.test   = test
         self.input  = None
         self.tab    = args.tab
         if not self.tab:
             self.tab = self.tabpos
-        if args.input_file:
+        if test is not None and test.input is not None:
+            self.input = test.input
+        elif args.input_file:
             self.input = open (args.input_file, 'r')
         self.col       = 0
         self.lines     = {}
@@ -804,55 +827,21 @@ class Interpreter:
         # Only for debugging
         if self.debug:
             self.log = log
+        self.ofile = sys.stdout
+        if test is not None:
+            self.ofile = test.output
+        elif args.output_file:
+            self.ofile = open (args.output_file, 'w')
         if self.args.screen == 'tkinter':
-            self.screen = Screen_Tkinter ()
+            self.screen = Screen_Tkinter (self.ofile)
         else:
-            self.screen = Screen ()
+            self.screen = Screen (self.ofile)
 
-        with open (args.program, 'r') as f:
-            lineno = self.lineno = sublineno = 0
-            for fline, l in enumerate (f):
-                l = l.rstrip ()
-                if l and l [0].isnumeric ():
-                    lineno, r = l.split (None, 1)
-                    lineno = self.lineno = int (lineno)
-                    sublineno = self.sublineno = 0
-                else:
-                    sublineno += 1
-                    self.sublineno = sublineno
-                    r = l.lstrip ()
-                self.flines [(lineno, sublineno)] = fline + 1
-                self.tokenizer.lexer.lineno    = lineno
-                self.tokenizer.lexer.sublineno = sublineno
-                self.tokenizer.lexer.fline     = fline + 1
-                # Newer versions seem to have comments starting with "'"
-                # And we now handle empty lines gracefully
-                if not l or r.lstrip ().startswith ("'"):
-                    self.tokenizer.feed ('REM')
-                    p = self.parser.parse (lexer = self.tokenizer)
-                    self.insert (p)
-                    continue
-                if l [0] == '\x1a':
-                    break
-                if ' ' in r:
-                    a, b = r.split (None, 1)
-                    if a == 'REM':
-                        self.tokenizer.feed ('REM')
-                        p = self.parser.parse (lexer = self.tokenizer)
-                        self.insert (p)
-                        continue
-                self.tokenizer.feed (r)
-                r = self.parser.parse (lexer = self.tokenizer, debug = self.log)
-                self.insert (r)
-        self.nextline = {}
-        self.first    = None
-        prev = None
-        for l in sorted (self.lines):
-            if self.first is None:
-                self.first = l
-            if prev is not None:
-                self.nextline [prev] = l
-            prev = l
+        if test is not None:
+            self.compile (test.program)
+        else:
+            with open (args.program, 'r') as f:
+                self.compile (f)
         self.break_lineno = None
     # end def __init__
 
@@ -873,6 +862,58 @@ class Interpreter:
             return None
         return self.flines [(self.lineno, self.sublineno)]
     # end def fline
+
+    def close_output (self):
+        if self.ofile and not self.test and self.ofile != sys.stdout:
+            self.ofile.close ()
+            self.ofile = None
+    # end def close_output
+
+    def compile (self, f):
+        lineno = self.lineno = sublineno = 0
+        for fline, l in enumerate (f):
+            l = l.rstrip ()
+            if l and l [0].isnumeric ():
+                lineno, r = l.split (None, 1)
+                lineno = self.lineno = int (lineno)
+                sublineno = self.sublineno = 0
+            else:
+                sublineno += 1
+                self.sublineno = sublineno
+                r = l.lstrip ()
+            self.flines [(lineno, sublineno)] = fline + 1
+            self.tokenizer.lexer.lineno    = lineno
+            self.tokenizer.lexer.sublineno = sublineno
+            self.tokenizer.lexer.fline     = fline + 1
+            # Newer versions seem to have comments starting with "'"
+            # And we now handle empty lines gracefully
+            if not l or r.lstrip ().startswith ("'"):
+                self.tokenizer.feed ('REM')
+                p = self.parser.parse (lexer = self.tokenizer)
+                self.insert (p)
+                continue
+            if l [0] == '\x1a':
+                break
+            if ' ' in r:
+                a, b = r.split (None, 1)
+                if a == 'REM':
+                    self.tokenizer.feed ('REM')
+                    p = self.parser.parse (lexer = self.tokenizer)
+                    self.insert (p)
+                    continue
+            self.tokenizer.feed (r)
+            r = self.parser.parse (lexer = self.tokenizer, debug = self.log)
+            self.insert (r)
+        self.nextline = {}
+        self.first    = None
+        prev = None
+        for l in sorted (self.lines):
+            if self.first is None:
+                self.first = l
+            if prev is not None:
+                self.nextline [prev] = l
+            prev = l
+    # end def compile
 
     def exec_cmdlist (self, cmdlist, idx):
         for i in range (idx, len (cmdlist)):
@@ -928,6 +969,7 @@ class Interpreter:
 
     def run (self):
         if self.err_seen:
+            self.close_output ()
             return
         self.running = True
         l = self.first
@@ -939,11 +981,14 @@ class Interpreter:
                 or self.break_lineno == 'all'
                 ):
                 import pdb; pdb.set_trace ()
+            if self.test and self.test.hook:
+                self.test.hook (self)
             self.next = self.nextline.get (l)
             #print ('lineno: %d.%d' % l)
             line = self.lines [l]
             if line is None:
                 self.raise_error ('Uncompiled line')
+                self.close_output ()
                 return
             name = line [0].__name__.split ('_', 1) [-1]
             if self.exec_condition or name in self.skip_mode_commands:
@@ -956,6 +1001,7 @@ class Interpreter:
             l = self.next
             if l:
                 self.lineno, self.sublineno = l
+        self.close_output ()
     # end def run
 
     # FUNCTIONS which need access to interpreter
@@ -1011,7 +1057,10 @@ class Interpreter:
             return
         fhandle = to_fhandle (fhandle)
         if fhandle not in self.files:
-            print ("Warning: Closing unopened file %s" % fhandle)
+            print \
+                ( "Warning: Closing unopened file %s" % fhandle
+                , file = sys.stderr
+                )
             return
         if self.files [fhandle]:
             self.files [fhandle].f.close ()
@@ -1172,9 +1221,9 @@ class Interpreter:
         prompt = s + ': '
         if fhandle is None:
             if self.input is not None:
-                print (prompt, end = '')
+                print (prompt, end = '', file = self.ofile)
                 value = self.input.readline ().rstrip ()
-                print (value)
+                print (value, file = self.ofile)
             else:
                 value = input (prompt)
         else:
@@ -2687,7 +2736,7 @@ class Interpreter:
 
 # end class Interpreter
 
-def main (argv = sys.argv [1:]):
+def options (argv):
     cmd = ArgumentParser ()
     cmd.add_argument \
         ( 'program'
@@ -2696,6 +2745,10 @@ def main (argv = sys.argv [1:]):
     cmd.add_argument \
         ( '-i', '--input-file'
         , help = 'Read input from file instead of stdin'
+        )
+    cmd.add_argument \
+        ( '-o', '--output-file'
+        , help = 'Write output to given file'
         )
     cmd.add_argument \
         ( '-L', '--break-line'
@@ -2716,6 +2769,11 @@ def main (argv = sys.argv [1:]):
         , default = 'None'
         )
     args = cmd.parse_args (argv)
+    return args
+# end def options
+
+def main (argv = sys.argv [1:]):
+    args = options (argv)
     interpreter = Interpreter (args)
     interpreter.break_lineno = args.break_line
     interpreter.run ()
