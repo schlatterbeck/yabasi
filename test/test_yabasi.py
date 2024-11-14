@@ -157,6 +157,29 @@ class Test_Base:
         self.run_test (' 1\n 2\n 3\n 4\n')
     # end def test_onerr_resume
 
+    def test_ongosub (self):
+        """
+            10 X%=1
+            20 ON X% GOSUB 1000,2000
+            30 PRINT "After gosub"
+            40 GOTO 2000
+            1000 PRINT "In gosub 1000"
+            1010 GOSUB 3000
+            1020 PRINT "After gosub 3000"
+            1030 RETURN
+            2000 END
+            3000 PRINT "In gosub 3000"
+            3010 ON X% GOSUB 4000,2000
+            3020 PRINT "After gosub 4000"
+            3030 RETURN
+            4000 PRINT "In gosub 4000"
+            4010 RETURN
+        """
+        ret  = 'In gosub 1000\nIn gosub 3000\nIn gosub 4000\n'
+        ret += 'After gosub 4000\nAfter gosub 3000\nAfter gosub\n'
+        self.run_test (ret)
+    # end def test_ongosub
+
     def test_print_semic (self):
         """
             100 PRINT ;1;2

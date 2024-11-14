@@ -35,6 +35,7 @@ import datetime
 import struct
 import copy
 import logging
+import time
 from . import tokenizer
 
 logging.basicConfig \
@@ -88,6 +89,12 @@ def fun_fractional_part (expr):
 # end def fun_fractional_part
 
 def fun_instr (offset, parent, child):
+    # Deal with the fact that the *last* element is optional in the
+    # grammar rule -- in fact the offset is optional
+    if child is None:
+        child  = parent
+        parent = offset
+        offset = None
     if offset is not None:
         offset = int (offset) - 1
     else:
@@ -138,7 +145,7 @@ def fun_str (expr):
 # end def fun_str
 
 def fun_string (count, s):
-    return s * count
+    return chr (s) * int (count)
 # end def fun_string
 
 #def _fmt_float (v, fmt = '%9f'):
@@ -206,8 +213,8 @@ class Screen:
     """ Default screen emulation doing essentially nothing
     """
 
-    def __init__ (self, ofile):
-        self.ofile = ofile
+    def __init__ (self, ofile = None):
+        self.ofile = ofile or sys.stdout
     # end def __init__
 
     # Commands
@@ -216,6 +223,11 @@ class Screen:
         pass
     # end def cmd_circle
 
+    def cmd_cls (self, screen = None):
+        """ Clear screen """
+        pass
+    # end def cmd_cls
+
     def cmd_color (self, exprlist):
         pass
     # end def cmd_color
@@ -223,6 +235,10 @@ class Screen:
     def cmd_get_graphics (self, var, e1, e2, e3, e4):
         return 0
     # end def cmd_get_graphics
+
+    def cmd_input (self, prompt):
+        return input (prompt)
+    # end def cmd_input
 
     def cmd_key (self, expr1, expr2):
         """ Since we cannot get function key input do nothing
@@ -255,8 +271,8 @@ class Screen:
         pass
     # end def cmd_screen
 
-    def cmd_width (self, expr):
-        if int (expr ()) != 80:
+    def cmd_width (self, ncols, nrows = None):
+        if int (ncols ()) != 80:
             raise NotImplementedError ('Screen width != 80 unsupported')
     # end def cmd_width
 
@@ -286,15 +302,52 @@ class Screen_Tkinter (Screen):
     """ A tkinter based screen emulation
     """
 
-    def __init__ (self, ofile):
-        self.ofile  = ofile
-        self.win    = tkinter.Tk ()
-        self.canvas = tkinter.Canvas (self.win)
+    def __init__ (self, ofile = None):
+        self.ofile     = ofile
+        self.win_root  = tkinter.Tk ()
+        self.rows      = 25
+        self.cols      = 80
+        self.cur_row   = 0
+        self.cur_col   = 0
+        #fixed.configure ('style', font = 'TkFixedFont')
+        #self.canvas = tkinter.Canvas (self.win)
+        self.win_label = tkinter.Label (self.win_root)
+        self.win_label.pack ()
+
+        #fnt = '5x7'
+        #fnt = '-misc-fixed-medium-r-normal--8-80-75-75-c-50-iso10646-1'
+        #fnt = '-misc-fixed-medium-r-normal--14-130-75-75-c-70-iso10646-1'
+        #fnt = '-misc-fixed-medium-r-semicondensed--13-120-75-75-c-60-iso10646-1'
+        #fnt = '5x7'
+        #fnt = '-adobe-courier-medium-r-normal--24-240-75-75-m-150-iso10646-1'
+        #fnt = '6x10'
+        self.win_text = tkinter.Text (self.win_label, font = 'TkFixedFont')
+        self.win_text.width  = self.cols
+        self.win_text.height = self.rows
+        self.win_text.configure (state = 'disabled')
+        self.clear_text_screen ()
+        self.win_text.pack ()
+        self.win_root.update ()
         self.keys   = []
-        self.cursor = [0, 0] # row, col
         self.funkey = ['', '', '', '', '', '', '', '', '', '']
-        self.win.bind ("<Key>", self.keyhandler)
+        self.win_root.bind ("<Key>", self.keyhandler)
     # end def __init__
+
+    def clear_graphics_screen (self):
+        pass
+    # end def clear_graphics_screen
+
+    def clear_text_screen (self):
+        self.win_text.configure (state = 'normal')
+        self.win_text.delete ('1.0', 'end')
+        self.win_text.insert ('end', ' ' * (self.rows * self.cols))
+        self.win_text.configure (state = 'disabled')
+        self.win_root.update ()
+    # end def clear_text_screen
+
+    def get_bufpos (self):
+        return (self.cur_row - 1) * self.cols + self.cur_col - 1
+    # end def get_bufpos
 
     def keyhandler (self, event):
         self.keys.append ((event.char, event.keysym))
@@ -306,6 +359,14 @@ class Screen_Tkinter (Screen):
         pass
     # end def cmd_circle
 
+    def cmd_cls (self, screen = None):
+        """ Clear screen """
+        if screen == 0 or screen == 2:
+            self.clear_text_screen ()
+        if screen == 0 or screen == 1:
+            self.clear_graphics_screen ()
+    # end def cmd_cls
+
     def cmd_color (self, exprlist):
         # FIXME
         pass
@@ -316,12 +377,26 @@ class Screen_Tkinter (Screen):
         return 0
     # end def cmd_get_graphics
 
+    def cmd_input (self, prompt):
+        self.cmd_print (prompt)
+        buf = []
+        while True:
+            c = self.fun_inkey ()
+            if not c:
+                time.sleep (.1)
+                continue
+            if c == '\n' or c == '\r':
+                return ''.join (buf)
+            self.cmd_print (c)
+            buf.append (c)
+    # end def cmd_input
+
     def cmd_key (self, expr1, expr2):
         """ Set macro for function key given with first expression
         """
-        n = int (expr1)
+        n = int (expr1 ())
         if 1 <= n <= 10:
-            self.funkey [n - 1] = str (expr2)
+            self.funkey [n - 1] = str (expr2 ())
     # end def cmd_key
 
     def cmd_line (self, x0, y0, x1, y1, lineopt):
@@ -332,15 +407,54 @@ class Screen_Tkinter (Screen):
     def cmd_locate (self, row = None, col = None, exprlist = None):
         """ Positions cursor """
         if row is not None:
-            self.cursor [0] = row
+            self.cur_row = int (row ())
         if col is not None:
-            self.cursor [1] = col
+            self.cur_col = int (col ())
     # end def cmd_locate
 
     def cmd_print (self, s, end = None):
-        self.canvas.create_text \
-            (*self.cursor, anchor = tkinter.W, font = 'Purisa', text = s)
-        self.win.update ()
+        """ tk row is 1-based, col is 0-based
+            Basic row/col is 1-based
+            we compute an index into our buffer
+        """
+        if self.ofile is not None:
+            self.ofile.print (s, end = end, file = ofile)
+            return
+        s = s.encode ('latin1').decode ('cp850')
+        s = s.split ('\n')
+        tlen = self.rows * self.cols
+        for n, p in enumerate (s):
+            pos  = self.get_bufpos ()
+            l    = len (p)
+            dl   = pos + l
+            wpos = '1.%d' % pos
+            epos = '1.%d' % (pos + l)
+            self.win_text.configure (state = 'normal')
+            self.win_text.delete (wpos, epos)
+            self.win_text.insert (wpos, p)
+            if dl > tlen:
+                # fill to eol
+                eol = self.cols - (dl % self.cols)
+                self.win_text.insert ('end', ' ' * eol)
+                # remove upper lines
+                assert (dl + eol) % self.cols == 0
+                rows = (dl + eol) / self.cols
+                ndel = rows - self.rows
+                assert ndel > 0
+                self.win_text.delete ('1.0', '1.%d' % ndel)
+                self.cur_row = self.rows
+                self.cur_col = dl % self.cols
+            else:
+                # compute new cursor position
+                # last item does *not* have a newline
+                if n == len (s) - 1:
+                    self.cur_col = dl % self.cols + 1
+                    self.cur_row = dl // self.cols + 1
+                else:
+                    self.cur_col = 0
+                    self.cur_row = dl // self.cols + 1
+            self.win_text.configure (state = 'disabled')
+            self.win_root.update ()
     # end def cmd_print
 
     def cmd_pset (self, x, y):
@@ -358,10 +472,24 @@ class Screen_Tkinter (Screen):
         pass
     # end def cmd_screen
 
-    def cmd_width (self, expr):
-        # FIXME
-        if int (expr) != 80:
-            raise NotImplementedError ('Screen width != 80 unsupported')
+    def cmd_width (self, ncols, nrows = None):
+        changed = False
+        cols = int (ncols ())
+        if cols != self.cols:
+            self.cols = cols
+            self.win_text.configure (state = 'normal')
+            self.win_text.configure (width = self.cols)
+            changed = True
+        if nrows:
+            rows = int (nrows ())
+            if rows != self.rows:
+                self.rows = rows
+                self.win_text.configure (state = 'normal')
+                self.win_text.configure (height = self.rows)
+                changed = True
+        if changed:
+            self.clear_text_screen ()
+        self.win_root.update ()
     # end def cmd_width
 
     def cmd_window (self, x0 = None, y0 = None, x1 = None, y1 = None):
@@ -379,9 +507,16 @@ class Screen_Tkinter (Screen):
     # end def fun_csrlin
 
     def fun_inkey (self):
-        self.win.update ()
+        self.win_root.update ()
         if self.keys:
-            return self.keys.pop (0) [1]
+            v = self.keys.pop (0)
+            if len (v [0]) == 0:
+                if v [1].startswith ('F'):
+                    n = int (v [1][1:])
+                    if n - 1 < len (self.funkey):
+                        return self.funkey [n - 1]
+            else:
+                return v [0]
         return ''
     # end def fun_inkey
 
@@ -843,7 +978,7 @@ class Interpreter:
         # Only for debugging
         if self.debug:
             self.log = log
-        self.ofile = sys.stdout
+        self.ofile = None
         if test is not None:
             self.ofile = test.output
         elif args.output_file:
@@ -880,7 +1015,7 @@ class Interpreter:
     # end def fline
 
     def close_output (self):
-        if self.ofile and not self.test and self.ofile != sys.stdout:
+        if self.ofile and not self.test:
             self.ofile.close ()
             self.ofile = None
     # end def close_output
@@ -1005,7 +1140,6 @@ class Interpreter:
             if self.test and self.test.hook:
                 self.test.hook (self)
             self.next = self.nextline.get (l)
-            #print ('lineno: %d.%d' % l)
             line = self.lines [l]
             if line is None:
                 self.raise_error ('Uncompiled line')
@@ -1085,11 +1219,6 @@ class Interpreter:
             self.files [fhandle].f.close ()
         del self.files [fhandle]
     # end def cmd_close
-
-    def cmd_cls (self):
-        """ Clear screen? """
-        self.col = 0
-    # end def cmd_cls
 
     def cmd_deffn (self, fname, varlist, expr):
         self.functions [fname] = (varlist, expr)
@@ -1240,13 +1369,14 @@ class Interpreter:
         prompt = s + ': '
         if fhandle is None:
             if self.input is not None:
-                print (prompt, end = '', file = self.ofile)
+                self.screen.cmd_print (prompt, end = '')
                 value = self.input.readline ().rstrip ()
-                print (value, file = self.ofile)
+                self.screen.cmd_print (value)
             else:
-                value = input (prompt)
+                value = self.screen.cmd_input (prompt)
         else:
-            value = self.files [fhandle].readline ().rstrip ()
+            fhandle = to_fhandle (fhandle)
+            value   = self.files [fhandle].readline ().rstrip ()
         if len (vars) > 1:
             for lhs, v in zip (vars, value.split (',')):
                 lhs ().set (v)
@@ -1256,7 +1386,7 @@ class Interpreter:
     # end def cmd_input
 
     def cmd_keyoff (self):
-        """ Command 'KEY OFF' handled by lexer
+        """ Command 'KEY OFF'
             This is supposed to turn off a list of function-key macros
             at the bottom of the screen. We do nothing.
         """
@@ -1357,8 +1487,11 @@ class Interpreter:
 
     def cmd_ongosub (self, expr, lines):
         expr = int (expr ()) - 1
-        assert not self.context
-        self.gstack.append (Context (self))
+        if self.context:
+            self.gstack.append (self.context)
+            self.context = None
+        else:
+            self.gstack.append (Context (self))
         self.next = (lines [expr], 0)
     # end def cmd_ongosub
 
@@ -1671,9 +1804,13 @@ class Interpreter:
     def p_cls_statement (self, p):
         """
             cls-statement : CLS
+                          | CLS expr
         """
         # probably clear screen
-        p [0] = (p [1],)
+        e = None
+        if len (p) > 2:
+            e = p [2]
+        p [0] = (p [1], e)
     # end def p_cls_statement
 
     def p_call_statement (self, p):
@@ -2447,7 +2584,7 @@ class Interpreter:
         """
             ongosub-statement : ON expr GOSUB intlist
         """
-        p [0] = ('ongoto', p [2], p [4])
+        p [0] = ('ongosub', p [2], p [4])
     # end def p_ongosub_statement
 
     def p_open_statement (self, p):
@@ -2723,8 +2860,12 @@ class Interpreter:
     def p_width_statement (self, p):
         """
             width-statement : WIDTH expr
+                            | WIDTH expr COMMA expr
         """
-        p [0] = [p [1], p [2]]
+        nrow = None
+        if len (p) > 4:
+            nrow = p [4]
+        p [0] = [p [1], p [2], nrow]
     # end def p_width_statement
 
     def p_window_statement (self, p):
