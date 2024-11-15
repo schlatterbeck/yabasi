@@ -180,6 +180,22 @@ class Test_Base:
         self.run_test (ret)
     # end def test_ongosub
 
+    def test_ongoto_ongosub_bounds (self):
+        """
+            10 X% = 0
+            20 ON X% GOTO 100,500
+            30 ON X% GOSUB 500,500
+            40 X% = 3
+            50 ON X% GOTO 100,500
+            60 ON X% GOSUB 500,500
+            70 PRINT "ByeBye"
+            100 END
+            500 PRINT "In gosub"
+            510 RETURN
+        """
+        self.run_test ('ByeBye\n')
+    # end def test_ongoto_ongosub_bounds
+
     def test_print_semic (self):
         """
             100 PRINT ;1;2

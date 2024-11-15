@@ -1658,11 +1658,15 @@ class Interpreter:
 
     def cmd_ongoto (self, expr, lines):
         expr = int (expr ()) - 1
+        if expr < 0 or expr > len (lines) - 1:
+            return
         self.next = (lines [expr], 0)
     # end def cmd_ongoto
 
     def cmd_ongosub (self, expr, lines):
         expr = int (expr ()) - 1
+        if expr < 0 or expr > len (lines) - 1:
+            return
         if self.context:
             self.gstack.append (self.context)
             self.context = None
