@@ -36,6 +36,7 @@ class Tokenizer:
         , 'CVI'
         , 'CVS'
         , 'EOF'
+        , 'FIX'
         , 'FRP'
         , 'INSTR'
         , 'INT'

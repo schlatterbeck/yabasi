@@ -81,6 +81,10 @@ def fun_cvs (s):
         return 0.0
 # end def fun_cvs
 
+def fun_fix (expr):
+    return np.trunc (expr)
+# end def fun_fix
+
 def fun_fractional_part (expr):
     """ This is used in the first Mininec implementation, probably
         something that the UNIVAC BASIC at the time provided.
@@ -2183,6 +2187,7 @@ class Interpreter:
                  | CVI   LPAREN expr RPAREN
                  | CVS   LPAREN expr RPAREN
                  | EOF   LPAREN expr RPAREN
+                 | FIX   LPAREN expr RPAREN
                  | FRP   LPAREN expr RPAREN
                  | INT   LPAREN expr RPAREN
                  | LEN   LPAREN expr RPAREN
@@ -2208,6 +2213,8 @@ class Interpreter:
             fun = fun_cvs
         elif fn == 'eof':
             fun = self.fun_eof
+        elif fn == 'fix':
+            fun = fun_fix
         elif fn == 'frp':
             fun = fun_fractional_part
         elif fn == 'int':
