@@ -26,6 +26,7 @@
 from ply import yacc
 from argparse import ArgumentParser
 from io import StringIO
+from PIL import Image, ImageTk, ImageGrab
 import itertools
 import tkinter
 import numpy as np
@@ -213,8 +214,9 @@ class Screen:
     """ Default screen emulation doing essentially nothing
     """
 
-    def __init__ (self, ofile = None):
-        self.ofile = ofile or sys.stdout
+    def __init__ (self, parent, ofile = None):
+        self.parent = parent
+        self.ofile  = ofile or sys.stdout
     # end def __init__
 
     # Commands
@@ -276,7 +278,7 @@ class Screen:
             raise NotImplementedError ('Screen width != 80 unsupported')
     # end def cmd_width
 
-    def cmd_window (self, x0 = None, y0 = None, x1 = None, y1 = None):
+    def cmd_window (self, x0, y0, x1, y1, is_screen = False):
         pass
     # end def cmd_window
 
@@ -302,25 +304,47 @@ class Screen_Tkinter (Screen):
     """ A tkinter based screen emulation
     """
 
-    def __init__ (self, ofile = None):
+    #   mode width height scale-x scale-y
+    screen_mode = dict \
+        (( (1,  (320,   200,      1,      1))
+         , (2,  (640,   200,      1,      2))
+        ))
+    # There are more foreground colors supported than this and the
+    # colors are probably not correct.
+    text_colors = dict \
+        (( ( 0, 'black')
+         , ( 1, 'blue')
+         , ( 2, 'green')
+         , ( 3, 'cyan')
+         , ( 4, 'red')
+         , ( 5, 'magenta')
+         , ( 6, 'orange')
+         , ( 7, 'grey')
+         , (15, 'white')
+        ))
+
+    def __init__ (self, parent, ofile = None):
+        self.parent    = parent
         self.ofile     = ofile
+        self.scr_mode  = 0
         self.win_root  = tkinter.Tk ()
         self.rows      = 25
         self.cols      = 80
         self.cur_row   = 0
         self.cur_col   = 0
-        #fixed.configure ('style', font = 'TkFixedFont')
-        #self.canvas = tkinter.Canvas (self.win)
+        self.text_bg   = 'white'
+        self.text_fg   = 'black'
+        self.canvas    = None
+        self.g_xmul    = 1.0
+        self.g_ymul    = 1.0
+        self.g_xoff    = 0.0
+        self.g_yoff    = 0.0
+        self.g_x       = 0.0
+        self.g_y       = 0.0
+        self.g_attr    = 'green'
         self.win_label = tkinter.Label (self.win_root)
         self.win_label.pack ()
 
-        #fnt = '5x7'
-        #fnt = '-misc-fixed-medium-r-normal--8-80-75-75-c-50-iso10646-1'
-        #fnt = '-misc-fixed-medium-r-normal--14-130-75-75-c-70-iso10646-1'
-        #fnt = '-misc-fixed-medium-r-semicondensed--13-120-75-75-c-60-iso10646-1'
-        #fnt = '5x7'
-        #fnt = '-adobe-courier-medium-r-normal--24-240-75-75-m-150-iso10646-1'
-        #fnt = '6x10'
         self.win_text = tkinter.Text (self.win_label, font = 'TkFixedFont')
         self.win_text.width  = self.cols
         self.win_text.height = self.rows
@@ -334,13 +358,18 @@ class Screen_Tkinter (Screen):
     # end def __init__
 
     def clear_graphics_screen (self):
-        pass
+        if self.canvas:
+            self.canvas.delete ('all')
+            self.win_root.update ()
     # end def clear_graphics_screen
 
     def clear_text_screen (self):
         self.win_text.configure (state = 'normal')
         self.win_text.delete ('1.0', 'end')
         self.win_text.insert ('end', ' ' * (self.rows * self.cols))
+        self.win_text.tag_add ('0', '1.0', '1.%d' % (self.rows * self.cols))
+        self.win_text.tag_config \
+            ('0', background = self.text_bg, foreground = self.text_fg)
         self.win_text.configure (state = 'disabled')
         self.win_root.update ()
     # end def clear_text_screen
@@ -349,9 +378,24 @@ class Screen_Tkinter (Screen):
         return (self.cur_row - 1) * self.cols + self.cur_col - 1
     # end def get_bufpos
 
+    def init_canvas (self):
+        if not self.canvas:
+            self.canvas = tkinter.Canvas \
+                (self.win_root, width = self.g_width, height = self.g_height)
+        self.canvas.pack ()
+        self.win_root.update ()
+        self.clear_graphics_screen ()
+    # end def init_canvas
+
     def keyhandler (self, event):
         self.keys.append ((event.char, event.keysym))
     # end def keyhandler
+
+    def screen_coords (self, point):
+        g_mul = np.array ([self.g_xmul, self.g_ymul])
+        g_off = np.array ([self.g_xoff, self.g_yoff])
+        return (point * g_mul + g_off).astype (int)
+    # end def screen_coords
 
     # Commands called from outside
 
@@ -361,6 +405,11 @@ class Screen_Tkinter (Screen):
 
     def cmd_cls (self, screen = None):
         """ Clear screen """
+        if screen is None:
+            if self.scr_mode == 0:
+                self.clear_text_screen ()
+            else:
+                self.clear_graphics_screen ()
         if screen == 0 or screen == 2:
             self.clear_text_screen ()
         if screen == 0 or screen == 1:
@@ -368,13 +417,36 @@ class Screen_Tkinter (Screen):
     # end def cmd_cls
 
     def cmd_color (self, exprlist):
-        # FIXME
-        pass
+        """ Currently only support colors in text mode
+            We ignore the third argument (border) if given.
+            This would need changes if we allow empty parameters
+            (i.e. a comma without an expression before the comma)
+        """
+        fg = bg = border = None
+        params = exprlist ()
+        fg = self.text_colors [params [0]]
+        if len (params) > 1:
+            bg = self.text_colors [params [1]]
+        if self.parent.args.enable_text_color and self.scr_mode == 0:
+            if fg is not None:
+                self.text_fg = fg
+            if bg is not None:
+                self.text_bg = bg
     # end def cmd_color
 
-    def cmd_get_graphics (self, var, e1, e2, e3, e4):
-        # FIXME
-        return 0
+    def cmd_get_graphics (self, var, x0, y0, x1, y1):
+        """ This currently works only for the graphics mode 2
+            with 1 bit per pixel
+        """
+        if not self.canvas:
+            return
+        x0, y0, x1, y1 = (int (x ()) for x in (x0, y0, x1, y1))
+        xw = self.win_root.winfo_rootx () + self.canvas.winfo_x ()
+        yw = self.win_root.winfo_rooty () + self.canvas.winfo_y ()
+        # This relies on the canvas not having a border
+        # otherwise we would need to take it into account
+        img = ImageGrab.grab ().crop ((xw + x0, yw + y0, xw + x1, yw + y1))
+        import pdb; pdb.set_trace ()
     # end def cmd_get_graphics
 
     def cmd_input (self, prompt):
@@ -384,6 +456,12 @@ class Screen_Tkinter (Screen):
             c = self.fun_inkey ()
             if not c:
                 time.sleep (.1)
+                continue
+            if c == '\x08':
+                del buf [-1]
+                self.cur_col -= 1
+                self.cmd_print (' ')
+                self.cur_col -= 1
                 continue
             if c == '\n' or c == '\r':
                 return ''.join (buf)
@@ -400,8 +478,29 @@ class Screen_Tkinter (Screen):
     # end def cmd_key
 
     def cmd_line (self, x0, y0, x1, y1, lineopt):
-        # FIXME
-        pass
+        if not self.canvas:
+            return
+        pt = np.array ([x () if x else None for x in (x0, y0, x1, y1)])
+        x1 = pt [-2]
+        y1 = pt [-1]
+        if pt [0] is None:
+            pt [0] = self.g_x
+            assert pt [1] is None
+            pt [1] = self.g_y
+        pt1, pt2 = pt.reshape ((2, 2))
+        pt1 = self.screen_coords (pt1)
+        pt2 = self.screen_coords (pt2)
+        self.g_x = x1
+        self.g_y = y1
+
+        if not lineopt:
+            self.canvas.create_line (*pt1, *pt2)
+        elif 'B' in lineopt:
+            d = {}
+            if 'F' in lineopt:
+                d.update (fill = 'red')
+            self.canvas.create_rectangle (*pt1, *pt2, **d)
+        self.win_root.update ()
     # end def cmd_line
 
     def cmd_locate (self, row = None, col = None, exprlist = None):
@@ -420,6 +519,25 @@ class Screen_Tkinter (Screen):
         if self.ofile is not None:
             self.ofile.print (s, end = end, file = ofile)
             return
+        if self.scr_mode == 0:
+            self.cmd_print_text (s, end = end)
+        else:
+            self.cmd_print_canvas (s, end = end)
+    # end def cmd_print
+
+    def cmd_print_canvas (self, s, end = None):
+        """ We generally asume non-multiline strings and no text-wrapping
+        """
+        font = ("Mx437 IBM CGA-2y", 12, "normal")
+        scrmode = self.screen_mode [self.scr_mode]
+        x = (self.cur_col - 1) * 8 * scrmode [2] # scale_x
+        y = (self.cur_row - 1) * 8 * scrmode [3] # scale_y
+        self.canvas.create_text (x, y, text = s, font = font, anchor = 'nw')
+        self.cur_col += len (s)
+        self.win_root.update ()
+    # end def cmd_print_canvas
+
+    def cmd_print_text (self, s, end = None):
         s = s.encode ('latin1').decode ('cp850')
         s = s.split ('\n')
         tlen = self.rows * self.cols
@@ -432,6 +550,10 @@ class Screen_Tkinter (Screen):
             self.win_text.configure (state = 'normal')
             self.win_text.delete (wpos, epos)
             self.win_text.insert (wpos, p)
+            tn = 'tag_%d' % pos
+            self.win_text.tag_add (tn, wpos, epos)
+            self.win_text.tag_config \
+                (tn, foreground = self.text_fg, background = self.text_bg)
             if dl > tlen:
                 # fill to eol
                 eol = self.cols - (dl % self.cols)
@@ -455,21 +577,51 @@ class Screen_Tkinter (Screen):
                     self.cur_row = dl // self.cols + 1
             self.win_text.configure (state = 'disabled')
             self.win_root.update ()
-    # end def cmd_print
+    # end def cmd_print_text
 
     def cmd_pset (self, x, y):
-        # FIXME
-        pass
+        """ Only the variant without attribute is implemented.
+            Has the effect of changing the current graphics position.
+        """
+        self.g_x = int (x ())
+        self.g_y = int (y ())
     # end def cmd_pset
 
     def cmd_put_graphics (self, x, y, array, option = None):
-        # FIXME
-        pass
+        """ For now this only works with 1 bit per pixel
+        """
+        if not self.canvas:
+            return
+        x, y = (int (z ()) for z in (x, y))
+        nx = self.parent.dim [array][0]
+        ny = self.parent.dim [array][1]
+        area = np.zeros ((nx, ny), dtype = bool)
+        for idx, xx in enumerate (range (0, nx, 16)):
+            for yy in range (ny):
+                word = self.parent.dim [array][idx + 2]
+                for k in range (min (16, nx - xx)):
+                    area [yy, xx + k] = word & (1 << k)
+        img = ImageTk.PhotoImage (image = Image.fromarray (area))
+        self.canvas.create_image (x, y, anchor = 'nw', image = img)
+        self.win_root.update ()
     # end def cmd_put_graphics
 
     def cmd_screen (self, e1, e2, e3, e4):
-        # FIXME
-        pass
+        mode = int (e1 ())
+        if mode == 0:
+            self.scr_mode = mode
+            if self.canvas:
+                self.canvas.forget ()
+            return
+        if mode not in self.screen_mode:
+            self.parent.raise_error ('Unsupported video mode: %s' % mode)
+        self.scr_mode = mode
+        sm = self.screen_mode [mode]
+        self.g_width  = sm [0] * sm [2]
+        self.g_height = sm [1] * sm [3]
+        if mode > 0:
+            self.init_canvas ()
+            self.win_root.update ()
     # end def cmd_screen
 
     def cmd_width (self, ncols, nrows = None):
@@ -492,9 +644,19 @@ class Screen_Tkinter (Screen):
         self.win_root.update ()
     # end def cmd_width
 
-    def cmd_window (self, x0 = None, y0 = None, x1 = None, y1 = None):
+    def cmd_window (self, x0, y0, x1, y1, is_screen = False):
         if x0 is not None:
             assert y0 is not None and x1 is not None and y1 is not None
+            x0, y0, x1, y1 = (x () for x in (x0, y0, x1, y1))
+            self.g_xmul = (0 - self.g_width) / (x0 - x1)
+            self.g_xoff = (x0 * self.g_width - x1 * 0) / (x0 - x1)
+            ydif = self.g_height - 0
+            if is_screen:
+                ydif = -ydif
+            self.g_ymul = ydif / (y0 - y1)
+            self.g_yoff =     (y0 * 0 - y1 * self.g_height) / (y0 - y1)
+            if is_screen:
+                self.g_yoff = (y0 * self.g_height - y1 * 0) / (y0 - y1)
         else:
             pass
     # end def cmd_window
@@ -503,7 +665,7 @@ class Screen_Tkinter (Screen):
 
     def fun_csrlin (self):
         """ Current row of cursor """
-        return self.cursor [0]
+        return self.cur_row
     # end def fun_csrlin
 
     def fun_inkey (self):
@@ -984,9 +1146,9 @@ class Interpreter:
         elif args.output_file:
             self.ofile = open (args.output_file, 'w')
         if self.args.screen == 'tkinter':
-            self.screen = Screen_Tkinter (self.ofile)
+            self.screen = Screen_Tkinter (self, self.ofile)
         else:
-            self.screen = Screen (self.ofile)
+            self.screen = Screen (self, self.ofile)
 
         if test is not None:
             self.compile (test.program)
@@ -1276,7 +1438,7 @@ class Interpreter:
     # end def cmd_endif
 
     def cmd_error (self, expr):
-        self.raise_error ('Error %d' % int (expr))
+        self.raise_error ('Error %d' % int (expr ()))
     # end def cmd_error
 
     def cmd_field (self, fhandle, fieldlist):
@@ -1287,7 +1449,6 @@ class Interpreter:
     # end def cmd_field
 
     def cmd_for (self, var, frm, to, step = 1):
-        #print ('FOR command: %s %s' % (var, self.fline))
         frm = frm ()
         to  = to  ()
         if step != 1:
@@ -1303,7 +1464,6 @@ class Interpreter:
                 break
         if found:
             for k in range (n + 1):
-                #print ('POP: %s' % self.stack.top.var)
                 self.stack.pop ()
         if self.exec_condition:
             self.var [var] = frm
@@ -1457,7 +1617,6 @@ class Interpreter:
     # end def cmd_multi
 
     def cmd_next (self, var):
-        #print ('NEXT command: %s %s' % (var, self.fline))
         if not self.stack:
             self.raise_error ('NEXT without FOR')
             return
@@ -1841,10 +2000,9 @@ class Interpreter:
 
     def p_circle_statement (self, p):
         """
-            circle-statement : CIRCLE LPAREN expr COMMA expr RPAREN COMMA expr \
-                               circle-opt
+            circle-statement : CIRCLE coord COMMA expr circle-opt
         """
-        p [0] = [p [1], p [3], p [5], p [8], p [9]]
+        p [0] = [p [1], p [2][0], p [2][1], p [4], p [5]]
     # end def p_circle_statement
 
     def p_close_statement (self, p):
@@ -1865,6 +2023,24 @@ class Interpreter:
         """
         p [0] = [p [1], p [2]]
     # end def p_color_statement
+
+    def p_coord (self, p):
+        """
+            coord : LPAREN expr COMMA expr RPAREN
+        """
+        p [0] = [p [2], p [4]]
+    # end def p_coord
+
+    def p_coord_opt (self, p):
+        """
+            coord-opt :
+                      | coord
+        """
+        if len (p) == 1:
+            p [0] = [None, None]
+        else:
+            p [0] = p [1]
+    # end def p_coord_opt
 
     def p_data_statement (self, p):
         """
@@ -2298,14 +2474,13 @@ class Interpreter:
         """
             get-statement : GET FHANDLE
                           | GET NUMBER
-                          | GET \
-                            LPAREN expr COMMA expr RPAREN MINUS \
-                            LPAREN expr COMMA expr RPAREN COMMA VAR
+                          | GET coord MINUS coord COMMA VAR
         """
         if len (p) == 3:
             p [0] = (p [1], p [2])
         else:
-            p [0] = ['get_graphics', p [14], p [3], p [5], p [9], p [11]]
+            cmd = 'get_graphics'
+            p [0] = [cmd, p [2][0], p [2][1], p [4][0], p [4][1], p [6]]
     # end def p_get_statement
 
     def p_goto_statement (self, p):
@@ -2472,15 +2647,9 @@ class Interpreter:
 
     def p_line_statement (self, p):
         """
-            line-statement : LINE LPAREN expr COMMA expr RPAREN MINUS \
-                                  LPAREN expr COMMA expr RPAREN line-opt
-                           | LINE MINUS \
-                                  LPAREN expr COMMA expr RPAREN line-opt
+            line-statement : LINE coord-opt MINUS coord line-opt
         """
-        if len (p) == 9:
-            p [0] = [p [1], None, None, p [4], p [6], p [8]]
-        else:
-            p [0] = [p [1], p [3], p [5], p [9], p [11], p [13]]
+        p [0] = [p [1], p [2][0], p [2][1], p [4][0], p [4][1], p [5]]
     # end def p_line_statement
 
     def p_line_input_statement (self, p):
@@ -2690,9 +2859,9 @@ class Interpreter:
 
     def p_pset_statement (self, p):
         """
-            pset-statement : PSET LPAREN expr COMMA expr RPAREN
+            pset-statement : PSET coord
         """
-        p [0] = [p [1], p [3], p [5]]
+        p [0] = [p [1], p [2][0], p [2][1]]
     # end def p_pset_statement
 
     def p_put_option (self, p):
@@ -2716,15 +2885,14 @@ class Interpreter:
                           | PUT NUMBER
                           | PUT FHANDLE COMMA NUMBER
                           | PUT NUMBER  COMMA NUMBER
-                          | PUT LPAREN expr COMMA expr RPAREN \
-                            COMMA VAR put-option
+                          | PUT coord COMMA VAR put-option
         """
         if len (p) == 3:
             p [0] = (p [1], p [2])
         elif len (p) == 5:
             p [0] = (p [1], p [2], p [4])
         else:
-            p [0] = ('put_graphics', p [3], p [5], p [7], p [8])
+            p [0] = ('put_graphics', p [2][0], p [2][1], p [4], p [5])
     # end def p_put_statement
 
     def p_read_statement (self, p):
@@ -2871,14 +3039,15 @@ class Interpreter:
     def p_window_statement (self, p):
         """
             window-statement : WINDOW
-                             | WINDOW LPAREN expr COMMA expr RPAREN \
-                                      MINUS                         \
-                                      LPAREN expr COMMA expr RPAREN
+                             | WINDOW coord MINUS coord
+                             | WINDOW SCREEN coord MINUS coord
         """
         if len (p) == 2:
-            p [0] = [p [1]]
+            p [0] = [p [1], None, None, None, None]
+        elif len (p) == 5:
+            p [0] = [p [1], p [2][0], p [2][1], p [4][0], p [4][1]]
         else:
-            p [0] = [p [1], p [3], p [5], p [9], p [11]]
+            p [0] = [p [1], p [3][0], p [3][1], p [5][0], p [5][1], True]
     # end def p_window_statement
 
     def p_write (self, p):
@@ -2919,6 +3088,10 @@ def options (argv):
         , type    = int
         , action  = 'append'
         , default = []
+        )
+    cmd.add_argument \
+        ( '--enable-text-color'
+        , action  = 'store_true'
         )
     cmd.add_argument \
         ( '-S', '--screen'
