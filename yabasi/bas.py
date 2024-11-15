@@ -342,6 +342,7 @@ class Screen_Tkinter (Screen):
         self.g_x       = 0.0
         self.g_y       = 0.0
         self.g_attr    = 'green'
+        self.g_images  = []
         self.win_label = tkinter.Label (self.win_root)
         self.win_label.pack ()
 
@@ -361,6 +362,7 @@ class Screen_Tkinter (Screen):
         if self.canvas:
             self.canvas.delete ('all')
             self.win_root.update ()
+        self.g_images = []
     # end def clear_graphics_screen
 
     def clear_text_screen (self):
@@ -593,16 +595,31 @@ class Screen_Tkinter (Screen):
         if not self.canvas:
             return
         x, y = (int (z ()) for z in (x, y))
+        scrmode = self.screen_mode [self.scr_mode]
+        xscale = scrmode [2]
+        yscale = scrmode [3]
+        x *= xscale
+        y *= yscale
         nx = self.parent.dim [array][0]
         ny = self.parent.dim [array][1]
-        area = np.zeros ((nx, ny), dtype = bool)
-        for idx, xx in enumerate (range (0, nx, 16)):
-            for yy in range (ny):
-                word = self.parent.dim [array][idx + 2]
-                for k in range (min (16, nx - xx)):
-                    area [yy, xx + k] = word & (1 << k)
+        area = np.zeros ((ny, nx), dtype = bool)
+        idx  = 0
+        for yy in range (ny):
+            # row aligned to *bytes* not *words*
+            offset = yy * ((nx + 7) // 8)
+            for xx in range (0, nx, 8):
+                oidx = offset + xx // 8
+                word = self.parent.dim [array][oidx // 2 + 2]
+                byte = ((word >> 8) if (oidx & 1) else word) & 0xFF
+                for k in range (min (8, nx - xx)):
+                    area [yy, xx + k] = byte & (1 << (7 - k))
+        area = np.logical_not (area)
+        area = np.repeat (area,   yscale, axis = 0)
+        area = np.repeat (area.T, xscale, axis = 0).T
         img = ImageTk.PhotoImage (image = Image.fromarray (area))
         self.canvas.create_image (x, y, anchor = 'nw', image = img)
+        # Prevent images to be garbage-collected, tk doesn't keep a ref
+        self.g_images.append (img)
         self.win_root.update ()
     # end def cmd_put_graphics
 
