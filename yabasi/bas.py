@@ -1546,20 +1546,32 @@ class Interpreter:
         self.stack.push (Stack_Entry_If (self, cond))
     # end def cmd_if_start
 
-    def cmd_input (self, vars, s = '', fhandle = None):
-        prompt = s + ': '
+    def _input (self, fhandle, prompt = ''):
         if fhandle is None:
             if self.input is not None:
-                self.screen.cmd_print (prompt, end = '')
                 value = self.input.readline ().rstrip ()
-                self.screen.cmd_print (value)
             else:
                 value = self.screen.cmd_input (prompt)
         else:
+            value = self.files [fhandle].readline ().rstrip ()
+        return value
+    # end def _input
+
+    def cmd_input (self, vars, s = '', fhandle = None):
+        if fhandle is not None:
             fhandle = to_fhandle (fhandle)
-            value   = self.files [fhandle].readline ().rstrip ()
+        prompt = s + ': '
+        if fhandle is None and self.input is not None:
+            self.screen.cmd_print (prompt, end = '')
+        value = self._input (fhandle, prompt)
+        if fhandle is None and self.input is not None:
+            self.screen.cmd_print (value)
         if len (vars) > 1:
-            for lhs, v in zip (vars, value.split (',')):
+            vals = value.split (',')
+            while len (vars) > len (vals):
+                value = self._input (fhandle)
+                vals.extend (value.split (','))
+            for lhs, v in zip (vars, vals):
                 lhs ().set (v)
         else:
             lhs = vars [0] ()
