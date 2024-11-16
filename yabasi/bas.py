@@ -429,7 +429,11 @@ class Screen_Tkinter (Screen):
     # Commands called from outside
 
     def cmd_circle (self, x, y, r, opt):
-        pass
+        x, y, r = (z () for z in (x, y, r))
+        # oval in canvas doesn't take line width into account, therefore +1
+        lh, lo = self.screen_coords (np.array ([x - r, y - r + 1]))
+        rh, hi = self.screen_coords (np.array ([x + r, y + r + 1]))
+        self.canvas.create_oval (lh, hi, rh, lo)
     # end def cmd_circle
 
     def cmd_cls (self, screen = None):
