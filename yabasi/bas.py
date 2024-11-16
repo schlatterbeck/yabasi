@@ -589,8 +589,8 @@ class Screen_Tkinter (Screen):
         """ Only the variant without attribute is implemented.
             Has the effect of changing the current graphics position.
         """
-        self.g_x = int (x ())
-        self.g_y = int (y ())
+        self.g_x = x ()
+        self.g_y = y ()
     # end def cmd_pset
 
     def cmd_put_graphics (self, x, y, array, option = None):
