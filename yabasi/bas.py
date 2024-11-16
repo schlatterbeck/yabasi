@@ -536,8 +536,8 @@ class Screen_Tkinter (Screen):
         """
         font = ("Mx437 IBM CGA-2y", 12, "normal")
         scrmode = self.screen_mode [self.scr_mode]
-        x = (self.cur_col - 1) * 8 * scrmode [2] # scale_x
-        y = (self.cur_row - 1) * 8 * scrmode [3] # scale_y
+        x = (self.cur_col - 1) * 8 * scrmode [2] + 1 # scale_x
+        y = (self.cur_row - 1) * 8 * scrmode [3] + 1 # scale_y
         self.canvas.create_text (x, y, text = s, font = font, anchor = 'nw')
         self.cur_col += len (s)
         self.win_root.update ()
