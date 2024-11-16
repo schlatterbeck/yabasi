@@ -367,6 +367,8 @@ class Screen_Tkinter (Screen):
             self.canvas.delete ('all')
             self.win_root.update ()
         self.g_images = []
+        self.cur_row = self.cur_col = 0
+        self.win_root.update ()
     # end def clear_graphics_screen
 
     def clear_text_screen (self):
@@ -377,11 +379,12 @@ class Screen_Tkinter (Screen):
         self.win_text.tag_config \
             ('0', background = self.text_bg, foreground = self.text_fg)
         self.win_text.configure (state = 'disabled')
+        self.cur_row = self.cur_col = 0
         self.win_root.update ()
     # end def clear_text_screen
 
     def get_bufpos (self):
-        return (self.cur_row - 1) * self.cols + self.cur_col - 1
+        return self.cur_row * self.cols + self.cur_col
     # end def get_bufpos
 
     def get_canvas_rectangle (self, x0, y0, x1, y1):
@@ -389,16 +392,31 @@ class Screen_Tkinter (Screen):
             canvas is obscured by another window this will yield very
             interesting special effects.
             There seems to be only a postscript export of the tkinter
-            canvas (and this exports the whole thing, meaning it's slow)
+            canvas (and this exports the whole thing, meaning it's slow:
+            It *does* have a view area (x, y, width, height) but still
+            needs to render the whole thing and then extract the area)
             This relies on the canvas having a border of 1, otherwise we
             would need to take it into account
             This returns a boolean numpy array.
+            Since the result can be ambiguous (the two lines in the
+            canvas representing one Basic line may not have the same
+            content) we or the K rows/cols representing one Basic line.
         """
+        # Convert to basic screen coords
+        sm = self.screen_mode [self.scr_mode]
+        f_x, f_y = sm [2:]
+        x0g, x1g = np.array ([x0, x1]) * f_x
+        y0g, y1g = np.array ([y0, y1]) * f_y
         # Not sure if we can somehow find out the width of the canvas border
         xw = self.win_root.winfo_rootx () + self.canvas.winfo_x () + 1
         yw = self.win_root.winfo_rooty () + self.canvas.winfo_y () + 1
-        img = ImageGrab.grab (bbox = (xw + x0, yw + y0, xw + x1, yw + y1))
+        img = ImageGrab.grab (bbox = (xw + x0g, yw + y0g, xw + x1g, yw + y1g))
         img = np.array (img.convert ('L')) < 128
+        # Reduce to correct dimension and convert back to bool
+        if sm [2] > 1 or sm [3] > 1:
+            s_y, s_x = img.shape
+            shp = (s_y // f_y, f_y, s_x // f_x, f_x)
+            img = img.reshape (shp).sum (3).sum (1) > 0
         return img
     # end def get_canvas_rectangle
 
@@ -477,7 +495,7 @@ class Screen_Tkinter (Screen):
     # end def cmd_get_graphics
 
     def cmd_input (self, prompt):
-        self.cmd_print (prompt)
+        self.cmd_print (prompt, end = '')
         buf = []
         while True:
             c = self.fun_inkey ()
@@ -487,12 +505,12 @@ class Screen_Tkinter (Screen):
             if c == '\x08':
                 del buf [-1]
                 self.cur_col -= 1
-                self.cmd_print (' ')
+                self.cmd_print (' ', end = '')
                 self.cur_col -= 1
                 continue
             if c == '\n' or c == '\r':
                 return ''.join (buf)
-            self.cmd_print (c)
+            self.cmd_print (c, end = '')
             buf.append (c)
     # end def cmd_input
 
@@ -533,9 +551,9 @@ class Screen_Tkinter (Screen):
     def cmd_locate (self, row = None, col = None, exprlist = None):
         """ Positions cursor """
         if row is not None:
-            self.cur_row = int (row ())
+            self.cur_row = int (row ()) - 1
         if col is not None:
-            self.cur_col = int (col ())
+            self.cur_col = int (col ()) - 1
     # end def cmd_locate
 
     def cmd_print (self, s, end = None):
@@ -557,14 +575,17 @@ class Screen_Tkinter (Screen):
         """
         font = ("Mx437 IBM CGA-2y", 12, "normal")
         scrmode = self.screen_mode [self.scr_mode]
-        x = (self.cur_col - 1) * 8 * scrmode [2] + 1 # scale_x
-        y = (self.cur_row - 1) * 8 * scrmode [3] + 1 # scale_y
+        x = self.cur_col * 8 * scrmode [2] + 1 # scale_x
+        y = self.cur_row * 8 * scrmode [3] + 1 # scale_y
         self.canvas.create_text (x, y, text = s, font = font, anchor = 'nw')
         self.cur_col += len (s)
         self.win_root.update ()
     # end def cmd_print_canvas
 
     def cmd_print_text (self, s, end = None):
+        if end is None:
+            end = '\n'
+        s = s + end
         s = s.encode ('latin1').decode ('cp850')
         s = s.split ('\n')
         tlen = self.rows * self.cols
@@ -597,8 +618,8 @@ class Screen_Tkinter (Screen):
                 # compute new cursor position
                 # last item does *not* have a newline
                 if n == len (s) - 1:
-                    self.cur_col = dl % self.cols + 1
-                    self.cur_row = dl // self.cols + 1
+                    self.cur_col = dl % self.cols
+                    self.cur_row = dl // self.cols
                 else:
                     self.cur_col = 0
                     self.cur_row = dl // self.cols + 1
