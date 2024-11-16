@@ -27,6 +27,7 @@ from ply import yacc
 from argparse import ArgumentParser
 from io import StringIO
 from PIL import Image, ImageTk, ImageGrab
+from math import prod
 import itertools
 import tkinter
 import numpy as np
@@ -345,7 +346,6 @@ class Screen_Tkinter (Screen):
         self.g_yoff    = 0.0
         self.g_x       = 0.0
         self.g_y       = 0.0
-        self.g_attr    = 'green'
         self.g_images  = []
         self.win_label = tkinter.Label (self.win_root)
         self.win_label.pack ()
@@ -383,6 +383,24 @@ class Screen_Tkinter (Screen):
     def get_bufpos (self):
         return (self.cur_row - 1) * self.cols + self.cur_col - 1
     # end def get_bufpos
+
+    def get_canvas_rectangle (self, x0, y0, x1, y1):
+        """ This is a hack: It screen-grabs the rectangle. So if the
+            canvas is obscured by another window this will yield very
+            interesting special effects.
+            There seems to be only a postscript export of the tkinter
+            canvas (and this exports the whole thing, meaning it's slow)
+            This relies on the canvas having a border of 1, otherwise we
+            would need to take it into account
+            This returns a boolean numpy array.
+        """
+        # Not sure if we can somehow find out the width of the canvas border
+        xw = self.win_root.winfo_rootx () + self.canvas.winfo_x () + 1
+        yw = self.win_root.winfo_rooty () + self.canvas.winfo_y () + 1
+        img = ImageGrab.grab (bbox = (xw + x0, yw + y0, xw + x1, yw + y1))
+        img = np.array (img.convert ('L')) < 128
+        return img
+    # end def get_canvas_rectangle
 
     def init_canvas (self):
         if not self.canvas:
@@ -447,12 +465,15 @@ class Screen_Tkinter (Screen):
         if not self.canvas:
             return
         x0, y0, x1, y1 = (int (x ()) for x in (x0, y0, x1, y1))
-        xw = self.win_root.winfo_rootx () + self.canvas.winfo_x ()
-        yw = self.win_root.winfo_rooty () + self.canvas.winfo_y ()
-        # This relies on the canvas not having a border
-        # otherwise we would need to take it into account
-        img = ImageGrab.grab ().crop ((xw + x0, yw + y0, xw + x1, yw + y1))
-        import pdb; pdb.set_trace ()
+        img = self.get_canvas_rectangle (x0, y0, x1, y1)
+        b   = np.packbits (img).flatten ()
+        if prod (b.shape) & 1:
+            b = np.append (b, (0,))
+        itr = iter (b)
+        self.parent.dim [var][0] = x1 - x0
+        self.parent.dim [var][1] = y1 - y0
+        for n, (b1, b2) in enumerate (zip (itr, itr)):
+            self.parent.dim [var][n + 2] = b1 | (b2 << 8)
     # end def cmd_get_graphics
 
     def cmd_input (self, prompt):
@@ -499,12 +520,12 @@ class Screen_Tkinter (Screen):
         self.g_x = x1
         self.g_y = y1
 
-        if not lineopt:
+        if 'B' not in lineopt:
             self.canvas.create_line (*pt1, *pt2)
-        elif 'B' in lineopt:
+        else:
             d = {}
             if 'F' in lineopt:
-                d.update (fill = 'red')
+                d.update (fill = 'black')
             self.canvas.create_rectangle (*pt1, *pt2, **d)
         self.win_root.update ()
     # end def cmd_line
@@ -593,7 +614,7 @@ class Screen_Tkinter (Screen):
         self.g_y = y ()
     # end def cmd_pset
 
-    def cmd_put_graphics (self, x, y, array, option = None):
+    def cmd_put_graphics (self, x, y, var, option = None):
         """ For now this only works with 1 bit per pixel
         """
         if not self.canvas:
@@ -602,25 +623,24 @@ class Screen_Tkinter (Screen):
         scrmode = self.screen_mode [self.scr_mode]
         xscale = scrmode [2]
         yscale = scrmode [3]
-        x *= xscale
-        y *= yscale
-        nx = self.parent.dim [array][0]
-        ny = self.parent.dim [array][1]
-        area = np.zeros ((ny, nx), dtype = bool)
-        idx  = 0
-        for yy in range (ny):
-            # row aligned to *bytes* not *words*
-            offset = yy * ((nx + 7) // 8)
-            for xx in range (0, nx, 8):
-                oidx = offset + xx // 8
-                word = self.parent.dim [array][oidx // 2 + 2]
-                byte = ((word >> 8) if (oidx & 1) else word) & 0xFF
-                for k in range (min (8, nx - xx)):
-                    area [yy, xx + k] = byte & (1 << (7 - k))
-        area = np.logical_not (area)
-        area = np.repeat (area,   yscale, axis = 0)
-        area = np.repeat (area.T, xscale, axis = 0).T
-        img = ImageTk.PhotoImage (image = Image.fromarray (area))
+        x  *= xscale
+        y  *= yscale
+        # Canvas seems to start at 1 not 0 at least it drops first row/col
+        # if we put it at (0,0)
+        # Basic seems to start at 0, at least for -1 pcbasic reports an
+        # "Illegal function call".
+        x  += 1
+        y  += 1
+        nx  = self.parent.dim [var][0]
+        ny  = self.parent.dim [var][1]
+        nxu = (nx + 7) // 8 * 8
+        shp = (nxu, ny)
+        b   = [[w & 0xFF, (w >> 8) & 0xff] for w in self.parent.dim [var][2:]]
+        b   = np.array (b, dtype = np.uint8).flatten () [:prod (shp) // 8]
+        bit = np.reshape (np.unpackbits (b), shp) < 1
+        bit = np.repeat (bit,   yscale, axis = 0)
+        bit = np.repeat (bit.T, xscale, axis = 0).T
+        img = ImageTk.PhotoImage (image = Image.fromarray (bit))
         self.canvas.create_image (x, y, anchor = 'nw', image = img)
         # Prevent images to be garbage-collected, tk doesn't keep a ref
         self.g_images.append (img)
@@ -637,12 +657,15 @@ class Screen_Tkinter (Screen):
         if mode not in self.screen_mode:
             self.parent.raise_error ('Unsupported video mode: %s' % mode)
         self.scr_mode = mode
-        sm = self.screen_mode [mode]
+        sm = self.screen_mode [self.scr_mode]
         self.g_width  = sm [0] * sm [2]
         self.g_height = sm [1] * sm [3]
-        if mode > 0:
-            self.init_canvas ()
-            self.win_root.update ()
+        self.g_xmul   = sm [2]
+        self.g_xoff   = 0
+        self.g_ymul   = sm [3]
+        self.g_yoff   = 0
+        self.init_canvas ()
+        self.win_root.update ()
     # end def cmd_screen
 
     def cmd_width (self, ncols, nrows = None):
@@ -669,17 +692,21 @@ class Screen_Tkinter (Screen):
         if x0 is not None:
             assert y0 is not None and x1 is not None and y1 is not None
             x0, y0, x1, y1 = (x () for x in (x0, y0, x1, y1))
-            self.g_xmul = (0 - self.g_width) / (x0 - x1)
-            self.g_xoff = (x0 * self.g_width - x1 * 0) / (x0 - x1)
-            ydif = self.g_height - 0
+            self.g_xmul = (1 - self.g_width) / (x0 - x1)
+            self.g_xoff = (x0 * self.g_width - x1 * 1) / (x0 - x1)
+            ydif = self.g_height - 1
             if is_screen:
                 ydif = -ydif
             self.g_ymul = ydif / (y0 - y1)
-            self.g_yoff =     (y0 * 0 - y1 * self.g_height) / (y0 - y1)
+            self.g_yoff =     (y0 * 1 - y1 * self.g_height) / (y0 - y1)
             if is_screen:
-                self.g_yoff = (y0 * self.g_height - y1 * 0) / (y0 - y1)
+                self.g_yoff = (y0 * self.g_height - y1 * 1) / (y0 - y1)
         else:
-            pass
+            sm = self.screen_mode [self.scr_mode]
+            self.g_xmul   = sm [2]
+            self.g_xoff   = 0
+            self.g_ymul   = sm [3]
+            self.g_yoff   = 0
     # end def cmd_window
 
     # Functions called from outside
@@ -1333,7 +1360,7 @@ class Interpreter:
                 try:
                     line [0] (*line [1:])
                 except ex as err:
-                    self.raise_error (err)
+                    self.raise_error (repr (err))
             while self.stack and self.stack.top.need_continue:
                 self.stack.top.exec ()
             l = self.next
@@ -2520,7 +2547,7 @@ class Interpreter:
             p [0] = (p [1], p [2])
         else:
             cmd = 'get_graphics'
-            p [0] = [cmd, p [2][0], p [2][1], p [4][0], p [4][1], p [6]]
+            p [0] = [cmd, p [6], p [2][0], p [2][1], p [4][0], p [4][1]]
     # end def p_get_statement
 
     def p_goto_statement (self, p):
