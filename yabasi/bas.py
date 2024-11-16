@@ -398,25 +398,12 @@ class Screen_Tkinter (Screen):
             This relies on the canvas having a border of 1, otherwise we
             would need to take it into account
             This returns a boolean numpy array.
-            Since the result can be ambiguous (the two lines in the
-            canvas representing one Basic line may not have the same
-            content) we or the K rows/cols representing one Basic line.
         """
-        # Convert to basic screen coords
-        sm = self.screen_mode [self.scr_mode]
-        f_x, f_y = sm [2:]
-        x0g, x1g = np.array ([x0, x1]) * f_x
-        y0g, y1g = np.array ([y0, y1]) * f_y
         # Not sure if we can somehow find out the width of the canvas border
         xw = self.win_root.winfo_rootx () + self.canvas.winfo_x () + 1
         yw = self.win_root.winfo_rooty () + self.canvas.winfo_y () + 1
-        img = ImageGrab.grab (bbox = (xw + x0g, yw + y0g, xw + x1g, yw + y1g))
+        img = ImageGrab.grab (bbox = (xw + x0, yw + y0, xw + x1, yw + y1))
         img = np.array (img.convert ('L')) < 128
-        # Reduce to correct dimension and convert back to bool
-        if sm [2] > 1 or sm [3] > 1:
-            s_y, s_x = img.shape
-            shp = (s_y // f_y, f_y, s_x // f_x, f_x)
-            img = img.reshape (shp).sum (3).sum (1) > 0
         return img
     # end def get_canvas_rectangle
 
@@ -479,11 +466,23 @@ class Screen_Tkinter (Screen):
     def cmd_get_graphics (self, var, x0, y0, x1, y1):
         """ This currently works only for the graphics mode 2
             with 1 bit per pixel
+            Since the result can be ambiguous (the two lines in the
+            canvas representing one Basic line may not have the same
+            content) we or the K rows/cols representing one Basic line.
         """
         if not self.canvas:
             return
         x0, y0, x1, y1 = (int (x ()) for x in (x0, y0, x1, y1))
-        img = self.get_canvas_rectangle (x0, y0, x1, y1)
+        sm = self.screen_mode [self.scr_mode]
+        f_x, f_y = sm [2:]
+        cx0, cx1 = np.array ([x0, x1]) * f_x
+        cy0, cy1 = np.array ([y0, y1]) * f_y
+        img = self.get_canvas_rectangle (cx0, cy0, cx1, cy1)
+        # Reduce to correct dimension and convert back to bool
+        if f_x > 1 or f_y > 1:
+            s_y, s_x = img.shape
+            shp = (s_y // f_y, f_y, s_x // f_x, f_x)
+            img = img.reshape (shp).sum (3).sum (1) > 0
         b   = np.packbits (img).flatten ()
         if prod (b.shape) & 1:
             b = np.append (b, (0,))
@@ -635,23 +634,23 @@ class Screen_Tkinter (Screen):
         self.g_y = y ()
     # end def cmd_pset
 
-    def cmd_put_graphics (self, x, y, var, option = None):
+    def cmd_put_graphics (self, x, y, var, method = None):
         """ For now this only works with 1 bit per pixel
         """
         if not self.canvas:
             return
         x, y = (int (z ()) for z in (x, y))
-        scrmode = self.screen_mode [self.scr_mode]
-        xscale = scrmode [2]
-        yscale = scrmode [3]
-        x  *= xscale
-        y  *= yscale
+        sm  = self.screen_mode [self.scr_mode]
+        f_x = sm [2]
+        f_y = sm [3]
         # Canvas seems to start at 1 not 0 at least it drops first row/col
-        # if we put it at (0,0)
+        # if we put it at (0,0). This seems to be a bug of the
+        # create_image method. The read-back of get_canvas_rectangle is
+        # not affected (and starts with 0)
         # Basic seems to start at 0, at least for -1 pcbasic reports an
         # "Illegal function call".
-        x  += 1
-        y  += 1
+        cx  = x * f_x + 1
+        cy  = y * f_y + 1
         nx  = self.parent.dim [var][0]
         ny  = self.parent.dim [var][1]
         nxu = (nx + 7) // 8 * 8
@@ -659,10 +658,23 @@ class Screen_Tkinter (Screen):
         b   = [[w & 0xFF, (w >> 8) & 0xff] for w in self.parent.dim [var][2:]]
         b   = np.array (b, dtype = np.uint8).flatten () [:prod (shp) // 8]
         bit = np.reshape (np.unpackbits (b), shp) < 1
-        bit = np.repeat (bit,   yscale, axis = 0)
-        bit = np.repeat (bit.T, xscale, axis = 0).T
+        bit = np.repeat (bit,   f_y, axis = 0)
+        bit = np.repeat (bit.T, f_x, axis = 0).T
+        if method is None:
+            method = 'XOR'
+        if method not in ('PSET', 'PRESET'):
+            sbit = self.get_canvas_rectangle \
+                (cx - 1, cy - 1, cx + nx * f_x - 1, cy + ny * f_y - 1)
+            if method == 'XOR':
+                bit ^= sbit
+            elif method == 'OR':
+                bit |= sbit
+            elif method == 'AND':
+                bit &= sbit
+        if method == 'PRESET':
+            bit = np.logical_not (bit)
         img = ImageTk.PhotoImage (image = Image.fromarray (bit))
-        self.canvas.create_image (x, y, anchor = 'nw', image = img)
+        self.canvas.create_image (cx, cy, anchor = 'nw', image = img)
         # Prevent images to be garbage-collected, tk doesn't keep a ref
         self.g_images.append (img)
         self.win_root.update ()
