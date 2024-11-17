@@ -47,7 +47,7 @@ setup \
     , license          = license
     , author           = "Ralf Schlatterbeck"
     , author_email     = "rsc@runtux.com"
-    , install_requires = ['numpy', 'ply']
+    , install_requires = ['numpy', 'ply', 'pillow']
     , packages         = ['yabasi']
     , platforms        = 'Any'
     , url              = "https://github.com/schlatterbeck/yabasi"
