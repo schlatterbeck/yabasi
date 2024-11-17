@@ -145,7 +145,7 @@ def fun_space (expr):
 # end def fun_space
 
 def fun_str (expr):
-    if isinstance (expr, float):
+    if isinstance (expr, (float, int)):
         return format_float (expr).rstrip ()
     return str (expr)
 # end def fun_str
@@ -351,8 +351,8 @@ class Screen_Tkinter (Screen):
         self.win_label.pack ()
 
         self.win_text = tkinter.Text (self.win_label, font = 'TkFixedFont')
-        self.win_text.width  = self.cols
-        self.win_text.height = self.rows
+        self.win_text.configure (width  = self.cols)
+        self.win_text.configure (height = self.rows)
         self.win_text.configure (state = 'disabled')
         self.clear_text_screen ()
         self.win_text.pack ()
@@ -428,12 +428,24 @@ class Screen_Tkinter (Screen):
 
     # Commands called from outside
 
-    def cmd_circle (self, x, y, r, opt):
+    def cmd_circle (self, x, y, r, options):
         x, y, r = (z () for z in (x, y, r))
-        # oval in canvas doesn't take line width into account, therefore +1
-        lh, lo = self.screen_coords (np.array ([x - r, y - r + 1]))
-        rh, hi = self.screen_coords (np.array ([x + r, y + r + 1]))
-        self.canvas.create_oval (lh, hi, rh, lo)
+        n = ['color', 'start', 'end', 'aspect']
+        class opt:
+            color = start = end = aspect = None
+        for name, v in zip (n, options):
+            if v is not None:
+                setattr (opt, name, v ())
+        lh, lo = self.screen_coords (np.array ([x - r, y - r]))
+        rh, hi = self.screen_coords (np.array ([x + r, y + r]))
+        if opt.start is not None and opt.end is not None:
+            start = opt.start / np.pi * 180
+            ext   = opt.end / np.pi * 180 - start
+            self.canvas.create_arc \
+                (lh, hi, rh, lo, start = start, extent = ext, style = 'arc')
+        else:
+            self.canvas.create_oval (lh, hi, rh, lo)
+        self.win_root.update ()
     # end def cmd_circle
 
     def cmd_cls (self, screen = None):
@@ -512,6 +524,7 @@ class Screen_Tkinter (Screen):
                 self.cur_col -= 1
                 continue
             if c == '\n' or c == '\r':
+                self.cmd_print ('\n', end = '')
                 return ''.join (buf)
             self.cmd_print (c, end = '')
             buf.append (c)
@@ -591,8 +604,18 @@ class Screen_Tkinter (Screen):
         s = s + end
         s = s.encode ('latin1').decode ('cp850')
         s = s.split ('\n')
+        e = []
+        for k in range (len (s) - 1):
+            e.append ('\n')
+        e.append (' ')
+        for n in range (len (s)):
+            v = s [n].split ('\r')
+            s [n] = v
+            e [n] = '\r' * (len (v) - 1) + e [n]
+        e = ''.join (e)
+
         tlen = self.rows * self.cols
-        for n, p in enumerate (s):
+        for n, (p, end) in enumerate (zip (itertools.chain (*s), e)):
             pos  = self.get_bufpos ()
             l    = len (p)
             dl   = pos + l
@@ -605,27 +628,26 @@ class Screen_Tkinter (Screen):
             self.win_text.tag_add (tn, wpos, epos)
             self.win_text.tag_config \
                 (tn, foreground = self.text_fg, background = self.text_bg)
-            if dl > tlen:
-                # fill to eol
+            # compute new cursor position
+            # last item does *not* have a newline
+            if end == '\r':
+                self.cur_col = 0
+                self.cur_row = dl // self.cols
+            elif end == '\n':
+                self.cur_col = 0
+                self.cur_row = dl // self.cols + 1
+            else:
+                self.cur_col = dl % self.cols
+                self.cur_row = dl // self.cols
+            if self.cur_row > self.rows - 1:
+                # Fill to eol
                 eol = self.cols - (dl % self.cols)
                 self.win_text.insert ('end', ' ' * eol)
-                # remove upper lines
-                assert (dl + eol) % self.cols == 0
-                rows = (dl + eol) / self.cols
-                ndel = rows - self.rows
+                # delete first lines(s)
+                ndel = (self.cur_row - self.rows + 1) * self.cols
                 assert ndel > 0
                 self.win_text.delete ('1.0', '1.%d' % ndel)
-                self.cur_row = self.rows
-                self.cur_col = dl % self.cols
-            else:
-                # compute new cursor position
-                # last item does *not* have a newline
-                if n == len (s) - 1:
-                    self.cur_col = dl % self.cols
-                    self.cur_row = dl // self.cols
-                else:
-                    self.cur_col = 0
-                    self.cur_row = dl // self.cols + 1
+                self.cur_row = self.rows - 1
             self.win_text.configure (state = 'disabled')
             self.win_root.update ()
     # end def cmd_print_text
@@ -690,9 +712,12 @@ class Screen_Tkinter (Screen):
             self.scr_mode = mode
             if self.canvas:
                 self.canvas.forget ()
+            self.win_label.pack ()
+            self.win_root.update ()
             return
         if mode not in self.screen_mode:
             self.parent.raise_error ('Unsupported video mode: %s' % mode)
+        self.win_label.forget ()
         self.scr_mode = mode
         sm = self.screen_mode [self.scr_mode]
         self.g_width  = sm [0] * sm [2]
@@ -750,7 +775,7 @@ class Screen_Tkinter (Screen):
 
     def fun_csrlin (self):
         """ Current row of cursor """
-        return self.cur_row
+        return self.cur_row + 1
     # end def fun_csrlin
 
     def fun_inkey (self):
@@ -1181,7 +1206,7 @@ class Interpreter:
         ((c [0], c [1]) for c in print_special.values ())
     tabpos = [14, 28, 42, 56]
 
-    debug = True
+    debug = False
 
     skip_mode_commands = set \
         (('if_start', 'else', 'endif', 'for', 'next', 'while', 'wend'))
@@ -1783,8 +1808,12 @@ class Interpreter:
 
     def cmd_print (self, printlist, fhandle = None, using = False):
         file = None
+        fn   = None
+        fobj = None
         if fhandle is not None:
-            file = self.files [fhandle].f
+            fobj = self.files [fhandle]
+            file = fobj.f
+            fn   = fobj.name
         l   = []
         c   = None
         fmt = None
@@ -1817,7 +1846,7 @@ class Interpreter:
             self.col = 0
         else:
             end = ''
-        if file is None:
+        if file is None or fn == 'SCRN:':
             self.screen.cmd_print (''.join (l), end = end)
         else:
             print (''.join (l), file = file, end = end)

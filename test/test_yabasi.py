@@ -221,6 +221,22 @@ class Test_Base:
         self.run_test ('1\n2\nA\n')
     # end def test_skip_next
 
+    def test_str (self):
+        """
+            10 DEF FNLSD$(S$)=RIGHT$(S$,LEN(S$)-SGN(SGN(VAL(S$))+1))
+            20 PRINT (FNLSD$("10"))
+            30 FOR I=-10 TO 10 STEP 10
+            40 PRINT "STR:>";STR$(I);"<";
+            50 PRINT "LSD>";FNLSD$(STR$(I));"<"
+            60 NEXT I
+            100 K%=10
+            110 PRINT ">";STR$(K%);"<"
+            500 END
+        """
+        r  = '0\nSTR:>-10<LSD>-10<\nSTR:> 0<LSD>0<\nSTR:> 10<LSD>10<\n> 10<\n'
+        self.run_test (r)
+    # end def test_str
+
     def test_while (self):
         """
             10 I=0
