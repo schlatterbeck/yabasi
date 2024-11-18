@@ -518,10 +518,11 @@ class Screen_Tkinter (Screen):
                 time.sleep (.1)
                 continue
             if c == '\x08':
-                del buf [-1]
-                self.cur_col -= 1
-                self.cmd_print (' ', end = '')
-                self.cur_col -= 1
+                if len (buf):
+                    del buf [-1]
+                    self.cur_col -= 1
+                    self.cmd_print (' ', end = '')
+                    self.cur_col -= 1
                 continue
             if c == '\n' or c == '\r':
                 self.cmd_print ('\n', end = '')
