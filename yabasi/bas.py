@@ -1691,7 +1691,8 @@ class Interpreter:
         if fhandle is not None:
             file = self.files [fhandle]
         lhs = lhs ()
-        lhs.set (file.readline () [:255])
+        v = file.readline ().rstrip ('\r\n') [:255]
+        lhs.set (v)
     # end def cmd_line_input
 
     def cmd_lset (self, lhs, expr):
