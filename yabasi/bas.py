@@ -40,13 +40,16 @@ import logging
 import time
 from . import tokenizer
 
-logging.basicConfig \
-    ( level    = logging.DEBUG
-    , filename = 'parselog.txt'
-    , filemode = 'w'
-    , format   = '%(filename)10s: %(lineno)5d: %(message)s'
-    )
-log = logging.getLogger ()
+def setup_log ():
+    logging.basicConfig \
+        ( level    = logging.DEBUG
+        , filename = 'parselog.txt'
+        , filemode = 'w'
+        , format   = '%(filename)10s: %(lineno)5d: %(message)s'
+        )
+    log = logging.getLogger ()
+    return log
+# end def setup_log
 
 def fun_chr (expr):
     expr = int (expr)
@@ -333,10 +336,12 @@ class Screen_Tkinter (Screen):
         self.ofile     = ofile
         self.scr_mode  = 0
         self.win_root  = tkinter.Tk ()
+        self.win_root.protocol ('WM_DELETE_WINDOW', self.on_close)
         self.rows      = 25
         self.cols      = 80
         self.cur_row   = 0
         self.cur_col   = 0
+        self.v_cursor  = 1
         self.text_bg   = 'white'
         self.text_fg   = 'black'
         self.canvas    = None
@@ -380,6 +385,7 @@ class Screen_Tkinter (Screen):
             ('0', background = self.text_bg, foreground = self.text_fg)
         self.win_text.configure (state = 'disabled')
         self.cur_row = self.cur_col = 0
+        self.update_cursor ()
         self.win_root.update ()
     # end def clear_text_screen
 
@@ -420,11 +426,30 @@ class Screen_Tkinter (Screen):
         self.keys.append ((event.char, event.keysym))
     # end def keyhandler
 
+    def on_close (self):
+        self.parent.on_close  ()
+        self.win_root.destroy ()
+        self.win_root.update  ()
+        self.win_root.update_idletasks ()
+    # end def on_close
+
     def screen_coords (self, point):
         g_mul = np.array ([self.g_xmul, self.g_ymul])
         g_off = np.array ([self.g_xoff, self.g_yoff])
         return (point * g_mul + g_off).astype (int)
     # end def screen_coords
+
+    def update_cursor (self):
+        if self.scr_mode != 0:
+            return
+        self.win_text.tag_delete ('cursor')
+        p = self.get_bufpos ()
+        if self.v_cursor:
+            self.win_text.tag_add ('cursor', '1.%d' % p, '1.%d' % (p + 1))
+            # bg color probably should depend on black vs white bg
+            self.win_text.tag_config ('cursor', background = 'yellow')
+        self.win_root.update ()
+    # end def update_cursor
 
     # Commands called from outside
 
@@ -571,6 +596,13 @@ class Screen_Tkinter (Screen):
             self.cur_row = int (row ()) - 1
         if col is not None:
             self.cur_col = int (col ()) - 1
+        show_cursor = None
+        if exprlist is not None:
+            e = exprlist ()
+            show_cursor = e [0]
+        if show_cursor is not None:
+            self.v_cursor = show_cursor
+        self.update_cursor ()
     # end def cmd_locate
 
     def cmd_print (self, s, end = None):
@@ -622,9 +654,15 @@ class Screen_Tkinter (Screen):
             dl   = pos + l
             wpos = '1.%d' % pos
             epos = '1.%d' % (pos + l)
+            peol =  ((pos + l) // self.cols + 1)
+            eol  = '1.%d' % peol
             self.win_text.configure (state = 'normal')
             self.win_text.delete (wpos, epos)
             self.win_text.insert (wpos, p)
+            # Newline must clear to eol
+            if end == '\n':
+                self.win_text.delete (epos, eol)
+                self.win_text.insert (epos, ' ' * (peol - (pos + l)))
             tn = 'tag_%d' % pos
             self.win_text.tag_add (tn, wpos, epos)
             self.win_text.tag_config \
@@ -649,6 +687,7 @@ class Screen_Tkinter (Screen):
                 assert ndel > 0
                 self.win_text.delete ('1.0', '1.%d' % ndel)
                 self.cur_row = self.rows - 1
+            self.update_cursor ()
             self.win_text.configure (state = 'disabled')
             self.win_root.update ()
     # end def cmd_print_text
@@ -788,6 +827,14 @@ class Screen_Tkinter (Screen):
                     n = int (v [1][1:])
                     if n - 1 < len (self.funkey):
                         return self.funkey [n - 1]
+                elif v [1] == 'Down':
+                    return '\0P'
+                elif v [1] == 'Up':
+                    return '\0H'
+                elif v [1] == 'Left':
+                    return '\0K'
+                elif v [1] == 'Right':
+                    return '\0M'
             else:
                 return v [0]
         return ''
@@ -1250,7 +1297,7 @@ class Interpreter:
         self.log       = None
         # Only for debugging
         if self.debug:
-            self.log = log
+            self.log = setup_log ()
         self.ofile = None
         if test is not None:
             self.ofile = test.output
@@ -1343,6 +1390,8 @@ class Interpreter:
         for i in range (idx, len (cmdlist)):
             cmd = cmdlist [i]
             self.context = Context (self, cmdlist, i)
+            if not self.running:
+                return
             cmd [0] (*cmd [1:])
             if self.test and self.test.hook:
                 self.test.hook (self)
@@ -1379,6 +1428,10 @@ class Interpreter:
             return (None, None)
         return (lhs.get (), expr)
     # end def lset_rset_mid_paramcheck
+
+    def on_close (self):
+        self.running = False
+    # end def on_close
 
     def raise_error (self, errmsg):
         print \
