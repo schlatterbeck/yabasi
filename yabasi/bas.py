@@ -222,9 +222,10 @@ class Screen:
     """ Default screen emulation doing essentially nothing
     """
 
-    def __init__ (self, parent, ofile = None):
+    def __init__ (self, parent, input = None, ofile = None):
         self.parent = parent
         self.ofile  = ofile or sys.stdout
+        self.input  = input
     # end def __init__
 
     # Commands
@@ -247,7 +248,13 @@ class Screen:
     # end def cmd_get_graphics
 
     def cmd_input (self, prompt):
-        return input (prompt)
+        if self.input is not None:
+            self.cmd_print (prompt, end = '')
+            value = self.input.readline ().rstrip ()
+            self.cmd_print (value)
+            return value
+        else:
+            return input (prompt)
     # end def cmd_input
 
     def cmd_key (self, expr1, expr2):
@@ -331,8 +338,9 @@ class Screen_Tkinter (Screen):
          , (15, 'white')
         ))
 
-    def __init__ (self, parent, ofile = None):
+    def __init__ (self, parent, input = None, ofile = None):
         self.parent    = parent
+        self.input     = input
         self.ofile     = ofile
         self.scr_mode  = 0
         self.win_root  = tkinter.Tk ()
@@ -365,6 +373,8 @@ class Screen_Tkinter (Screen):
         self.keys   = []
         self.funkey = ['', '', '', '', '', '', '', '', '', '']
         self.win_root.bind ("<Key>", self.keyhandler)
+        if self.input:
+            self.keys.extend (self.input.read ())
     # end def __init__
 
     def clear_graphics_screen (self):
@@ -822,6 +832,8 @@ class Screen_Tkinter (Screen):
         self.win_root.update ()
         if self.keys:
             v = self.keys.pop (0)
+            if isinstance (v, str):
+                return v
             if len (v [0]) == 0:
                 if v [1].startswith ('F'):
                     n = int (v [1][1:])
@@ -1304,9 +1316,9 @@ class Interpreter:
         elif args.output_file:
             self.ofile = open (args.output_file, 'w')
         if self.args.screen == 'tkinter':
-            self.screen = Screen_Tkinter (self, self.ofile)
+            self.screen = Screen_Tkinter (self, self.input, self.ofile)
         else:
-            self.screen = Screen (self, self.ofile)
+            self.screen = Screen (self, self.input, self.ofile)
 
         if test is not None:
             self.compile (test.program)
@@ -1691,10 +1703,7 @@ class Interpreter:
 
     def _input (self, fhandle, prompt = ''):
         if fhandle is None:
-            if self.input is not None:
-                value = self.input.readline ().rstrip ()
-            else:
-                value = self.screen.cmd_input (prompt)
+            value = self.screen.cmd_input (prompt)
         else:
             value = self.files [fhandle].readline ().rstrip ()
         return value
@@ -1704,11 +1713,7 @@ class Interpreter:
         if fhandle is not None:
             fhandle = to_fhandle (fhandle)
         prompt = s + ': '
-        if fhandle is None and self.input is not None:
-            self.screen.cmd_print (prompt, end = '')
         value = self._input (fhandle, prompt)
-        if fhandle is None and self.input is not None:
-            self.screen.cmd_print (value)
         if len (vars) > 1:
             vals = value.split (',')
             while len (vars) > len (vals):
