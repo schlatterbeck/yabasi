@@ -228,6 +228,10 @@ class Screen:
         self.input  = input
     # end def __init__
 
+    def dump_contents (self, test):
+        pass
+    # end def dump_contents
+
     # Commands
 
     def cmd_circle (self, x, y, r, opt):
@@ -398,6 +402,18 @@ class Screen_Tkinter (Screen):
         self.update_cursor ()
         self.win_root.update ()
     # end def clear_text_screen
+
+    def dump_contents (self, test):
+        """ Dump contents of text or graphics screen (depending on
+            current graphics mode) to the test object
+        """
+        if self.scr_mode == 0:
+            test.cap_txt = self.win_text.get ('1.0', 'end')
+        else:
+            # We should have a canvas when in scr_mode != 0
+            assert self.canvas
+            test.cap_img = self.canvas.postscript ()
+    # end def dump_contents
 
     def get_bufpos (self):
         return self.cur_row * self.cols + self.cur_col
@@ -620,9 +636,6 @@ class Screen_Tkinter (Screen):
             Basic row/col is 1-based
             we compute an index into our buffer
         """
-        if self.ofile is not None:
-            self.ofile.print (s, end = end, file = ofile)
-            return
         if self.scr_mode == 0:
             self.cmd_print_text (s, end = end)
         else:
@@ -749,7 +762,8 @@ class Screen_Tkinter (Screen):
                 bit &= sbit
         if method == 'PRESET':
             bit = np.logical_not (bit)
-        img = ImageTk.PhotoImage (image = Image.fromarray (bit))
+        img = ImageTk.PhotoImage \
+            (master = self.canvas, image = Image.fromarray (bit))
         self.canvas.create_image (cx, cy, anchor = 'nw', image = img)
         # Prevent images to be garbage-collected, tk doesn't keep a ref
         self.g_images.append (img)
@@ -1237,13 +1251,18 @@ class Basic_File:
 class Interpreter_Test:
     """ This is used for testing: redirecting output, optionally
         redirecting input and passing the program as an iterable.
+        In addition we can capture the tkinter text or graphics
+        screen.
     """
 
-    def __init__ (self, program, hook = None, input = None):
+    def __init__ (self, program, hook = None, input = None, capture = False):
         self.program = program
         self.hook    = hook
         self.input   = input
         self.output  = StringIO ()
+        self.capture = capture
+        self.cap_txt = None # captured text from text widget
+        self.cap_img = None # captured graphics from canvas
     # end def __init__
 
     def stack_height (self):
@@ -1495,6 +1514,8 @@ class Interpreter:
             if l:
                 self.lineno, self.sublineno = l
         self.close_output ()
+        if self.test and self.test.capture and self.screen:
+            self.screen.dump_contents (self.test)
     # end def run
 
     # FUNCTIONS which need access to interpreter

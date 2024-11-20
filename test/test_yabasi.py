@@ -23,29 +23,56 @@
 # SOFTWARE.
 # ****************************************************************************
 
+import re
+import os
 import sys
 import inspect
 from textwrap import dedent
 from yabasi.bas import Interpreter, options, Interpreter_Test
 
-class Test_Base:
+class _Test_Common:
 
-    def run_test (self, expect = None, hook = None, opt = None):
+    default_opt = ['']
+    regex = re.compile (r'%%For:(.|[\r\n])*%%CreationDate[^\n\r]*\n')
+
+    def run_test (self, expect = None, hook = None, opt = None, capture = None):
         """ Determine caller, get docstring from caller and run
             interpreter with it. Optionally install test hook before
             doing this.
         """
         if opt is None:
-            opt = ['']
+            opt = self.default_opt
         args   = options (opt)
         caller = getattr (self, inspect.stack () [1][3])
         prg    = dedent (caller.__doc__).split ('\n')
-        t      = self.itest = Interpreter_Test (prg, hook)
+        t      = self.itest = Interpreter_Test (prg, hook, capture = capture)
         bas    = Interpreter (args, t)
         bas.run ()
         if expect is not None:
             assert t.output.getvalue () == expect
+        if capture is not None:
+            for typ in ('txt', 'img'):
+                attr   = 'cap_' + typ
+                result = getattr (t, attr, None)
+                if result:
+                    if typ == 'img':
+                        result = self.regex.sub ('', result)
+                    name = caller.__name__.split ('_', 1) [1]
+                    fn = os.path.join ('test', 'images', name) + '.' + typ
+                    with open (fn) as f:
+                        expect = f.read ()
+                        with open (fn + '.result', 'w') as fw:
+                            fw.write (result)
+                        assert result == expect
+                    break
+            else:
+                raise ValueError ('No captured output was found')
     # end def run_test
+
+# end def _Test_Common
+
+
+class Test_Base (_Test_Common):
 
     def stack_hook (self, interpreter):
         # assert interpeter and python stacks don't grow
@@ -259,3 +286,98 @@ class Test_Base:
     # end def test_while_single_line
 
 # end class Test_Base
+
+class Test_Graphics (_Test_Common):
+
+    default_opt = ['-S', 'tkinter', '']
+
+    def test_canvas_arc (self):
+        """
+            10 SCREEN 2,0,0,0
+            15 WINDOW (-1, -1)-(1, 1)
+            20 CIRCLE (0, 0), .5,,0,3.1415/2
+            20000 END
+        """
+        self.run_test ('', capture = True)
+    # end def test_canvas_arc
+
+    def test_canvas_dot (self):
+        """
+            5 DIM PIC% (8)
+            10 SCREEN 2,0,0,0
+            15 WINDOW
+            30 LINE (1, 1) - (1, 1),,B
+            35 GET (0, 0)-(8,8), PIC%
+            40 LINE (160,  50) - (160,  50),,B
+            50 LINE (320, 100) - (320, 100),,B
+            60 LINE (640, 200) - (640, 200),,B
+            65 LOCATE 10,10
+            70 FOR I=1 TO 8: PRINT PIC%(I);' ': NEXT I
+        """
+        # HMPF: In this case the dots are not visible in the postscript
+        # but they *are* visible in the tkinter canvas. So the canvas
+        # postscript export does not export the real thing.
+        # We see this when the result is read back from the window with
+        # the GET command: It should return all zeros according the
+        # postscript version.
+        # This is also something to look out for should we ever devise a
+        # different method for accessing the canvas pixels.
+        self.run_test ('', capture = True)
+    # end def test_canvas_dot
+
+    def test_canvas_get (self):
+        """
+            10 DATA 8,8,16956,15938,16898,60,0,0,0
+            20 DIM A9% (8)
+            25 DIM B9% (8)
+            30 FOR I=0 TO 8: READ A9%(I):NEXT I
+            40 '
+            50 SCREEN 2,0,0,0
+            60 WINDOW
+            70 PUT (0, 0), A9%
+            80 PUT (0, 200 - 8), A9%
+            100 GET (0, 0)-(8, 8),B9%
+            150 SCREEN 0,0,0,0
+            160 FOR I=0 TO 8: PRINT A9%(I);" ";B9%(I);"," : NEXT I
+        """
+        self.run_test ('', capture = True)
+    # end def test_canvas_get
+
+    def test_canvas_line (self):
+        """
+            10 SCREEN 2,0,0,0
+            15 WINDOW
+            20 WINDOW (0, 0)-(1, 1)
+            30 LINE (0, 0) - (0.5, 0.5)
+        """
+        self.run_test ('', capture = True)
+    # end def test_canvas_line
+
+    def test_canvas_put (self):
+        """
+            10 DATA 8,8,16956,15938,16898,60,0,0,0
+            20 DIM A9% (8)
+            25 DIM B9% (8)
+            30 FOR I=0 TO 8: READ A9%(I):NEXT I
+            40 '
+            50 SCREEN 2,0,0,0
+            60 WINDOW
+            70 PUT (0, 0), A9%
+            80 PUT (0, 200 - 8), A9%
+        """
+        self.run_test ('', capture = True)
+    # end def test_canvas_put
+
+    def test_canvas_text (self):
+        """
+            10 SCREEN 2,0,0,0
+            15 WINDOW
+            20 LOCATE 0,0
+            30 PRINT "X"
+            20 LOCATE 1,1
+            30 PRINT "X"
+        """
+        self.run_test ('', capture = True)
+    # end def test_canvas_text
+
+# end class Test_Graphics
