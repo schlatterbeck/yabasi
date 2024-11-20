@@ -38,7 +38,7 @@ import struct
 import copy
 import logging
 import time
-from . import tokenizer
+from . import tokenizer, __version__
 
 def setup_log ():
     logging.basicConfig \
@@ -3284,17 +3284,32 @@ def options (argv):
         , help = 'Basic program to run'
         )
     cmd.add_argument \
+        ( '--enable-text-color'
+        , action  = 'store_true'
+        )
+    cmd.add_argument \
         ( '-i', '--input-file'
         , help = 'Read input from file instead of stdin'
+        )
+    cmd.add_argument \
+        ( '-L', '--break-line'
+        , help = 'Line in basic where to stop in (python-) debugger'
+        , type = int
         )
     cmd.add_argument \
         ( '-o', '--output-file'
         , help = 'Write output to given file'
         )
     cmd.add_argument \
-        ( '-L', '--break-line'
-        , help = 'Line in basic where to stop in (python-) debugger'
-        , type = int
+        ( '-S', '--screen'
+        , help    = 'Screen emulation'
+        , choices = ('None', 'tkinter')
+        , default = 'None'
+        )
+    cmd.add_argument \
+        ( '--print-version'
+        , help    = 'Print version number and exit'
+        , action  = 'store_true'
         )
     cmd.add_argument \
         ( '-t', '--tab'
@@ -3303,22 +3318,15 @@ def options (argv):
         , action  = 'append'
         , default = []
         )
-    cmd.add_argument \
-        ( '--enable-text-color'
-        , action  = 'store_true'
-        )
-    cmd.add_argument \
-        ( '-S', '--screen'
-        , help    = 'Screen emulation'
-        , choices = ('None', 'tkinter')
-        , default = 'None'
-        )
     args = cmd.parse_args (argv)
     return args
 # end def options
 
 def main (argv = sys.argv [1:]):
     args = options (argv)
+    if args.print_version:
+        print ('Yabasi version:', __version__)
+        return 0
     interpreter = Interpreter (args)
     interpreter.break_lineno = args.break_line
     interpreter.run ()
