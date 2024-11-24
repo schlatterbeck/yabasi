@@ -299,7 +299,7 @@ class Test_Base (_Test_Common):
         """
         kin = 'this\nis\na\n1,2,3\n'
         opt = ['-k', kin, '']
-        s   = 'thisK$:this\nisK$:is\n: aa\n: 1,2,3I: 1 J: 2 K: 3\n'
+        s   = 'this\nK$:this\nis\nK$:is\n: a\na\n: 1,2,3\nI: 1 J: 2 K: 3\n'
         self.run_test (s, opt = opt)
     # end def test_input
 

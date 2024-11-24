@@ -257,7 +257,7 @@ class Screen:
         if self.kinput:
             self.cmd_print (prompt, end = '')
             value = self.kinput.pop (0)
-            self.cmd_print (value, end = '')
+            self.cmd_print (value)
             return value
         else:
             return input (prompt)
