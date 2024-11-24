@@ -576,6 +576,7 @@ class Screen_Tkinter (Screen):
                     self.cur_col -= 1
                     self.cmd_print (' ', end = '')
                     self.cur_col -= 1
+                    self.update_cursor ()
                 continue
             if c == '\n' or c == '\r':
                 #self.cmd_print ('\n', end = '')
