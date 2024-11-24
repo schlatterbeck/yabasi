@@ -60,10 +60,10 @@ class _Test_Common:
                     name = caller.__name__.split ('_', 1) [1]
                     fn = os.path.join ('test', 'images', name) + '.' + typ
                     with open (fn) as f:
-                        expect = f.read ()
+                        expct = f.read ()
                         with open (fn + '.result', 'w') as fw:
                             fw.write (result)
-                        assert result == expect
+                        assert result == expct
                     break
             else:
                 raise ValueError ('No captured output was found')
@@ -285,6 +285,24 @@ class Test_Base (_Test_Common):
         self.run_test (' 1\n 2\n 3\n 4\n 5\n', self.stack_hook)
     # end def test_while_single_line
 
+    def test_input (self):
+        """
+            5 LOCATE 1,1
+            10 FOR I=1 TO 2
+            20 LINE INPUT; K$
+            30 ?"K$:";K$
+            40 NEXT I
+            50 INPUT; K$
+            60 ?K$
+            70 INPUT; I,J,K
+            80 ?"I:";I;" J:";J;" K:";K
+        """
+        kin = 'this\nis\na\n1,2,3\n'
+        opt = ['-k', kin, '']
+        s   = 'thisK$:this\nisK$:is\n: aa\n: 1,2,3I: 1 J: 2 K: 3\n'
+        self.run_test (s, opt = opt)
+    # end def test_input
+
 # end class Test_Base
 
 class Test_Graphics (_Test_Common):
@@ -298,7 +316,7 @@ class Test_Graphics (_Test_Common):
             20 CIRCLE (0, 0), .5,,0,3.1415/2
             20000 END
         """
-        self.run_test ('', capture = True)
+        self.run_test (capture = True)
     # end def test_canvas_arc
 
     def test_canvas_dot (self):
@@ -340,7 +358,7 @@ class Test_Graphics (_Test_Common):
             150 SCREEN 0,0,0,0
             160 FOR I=0 TO 8: PRINT A9%(I);" ";B9%(I);"," : NEXT I
         """
-        self.run_test ('', capture = True)
+        self.run_test (capture = True)
     # end def test_canvas_get
 
     def test_canvas_line (self):
@@ -350,7 +368,7 @@ class Test_Graphics (_Test_Common):
             20 WINDOW (0, 0)-(1, 1)
             30 LINE (0, 0) - (0.5, 0.5)
         """
-        self.run_test ('', capture = True)
+        self.run_test (capture = True)
     # end def test_canvas_line
 
     def test_canvas_put (self):
@@ -365,7 +383,7 @@ class Test_Graphics (_Test_Common):
             70 PUT (0, 0), A9%
             80 PUT (0, 200 - 8), A9%
         """
-        self.run_test ('', capture = True)
+        self.run_test (capture = True)
     # end def test_canvas_put
 
     def test_canvas_text (self):
@@ -377,7 +395,24 @@ class Test_Graphics (_Test_Common):
             20 LOCATE 1,1
             30 PRINT "X"
         """
-        self.run_test ('', capture = True)
+        self.run_test (capture = True)
     # end def test_canvas_text
+
+    def test_canvas_input (self):
+        """
+            5 LOCATE 1,1
+            10 FOR I=1 TO 2
+            20 LINE INPUT; K$
+            30 ?"K$:";K$
+            40 NEXT I
+            50 INPUT; K$
+            60 ?K$
+            70 INPUT; I,J,K
+            80 ?"I:";I;" J:";J;" K:";K
+        """
+        kin = 'this\nis\na\n1,2,3\n'
+        opt = ['-k', kin] + self.default_opt
+        self.run_test (opt = opt, capture = True)
+    # end def test_canvas_input
 
 # end class Test_Graphics

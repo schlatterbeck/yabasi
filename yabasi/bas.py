@@ -222,10 +222,12 @@ class Screen:
     """ Default screen emulation doing essentially nothing
     """
 
-    def __init__ (self, parent, input = None, ofile = None):
+    def __init__ (self, parent, kinput = None, ofile = None):
         self.parent = parent
         self.ofile  = ofile or sys.stdout
-        self.input  = input
+        self.kinput = None
+        if kinput:
+            self.kinput = kinput.split ('\n')
     # end def __init__
 
     def dump_contents (self, test):
@@ -252,10 +254,10 @@ class Screen:
     # end def cmd_get_graphics
 
     def cmd_input (self, prompt):
-        if self.input is not None:
+        if self.kinput:
             self.cmd_print (prompt, end = '')
-            value = self.input.readline ().rstrip ()
-            self.cmd_print (value)
+            value = self.kinput.pop (0)
+            self.cmd_print (value, end = '')
             return value
         else:
             return input (prompt)
@@ -342,9 +344,9 @@ class Screen_Tkinter (Screen):
          , (15, 'white')
         ))
 
-    def __init__ (self, parent, input = None, ofile = None):
+    def __init__ (self, parent, kinput = None, ofile = None):
         self.parent    = parent
-        self.input     = input
+        self.kinput    = kinput
         self.ofile     = ofile
         self.scr_mode  = 0
         self.win_root  = tkinter.Tk ()
@@ -377,8 +379,8 @@ class Screen_Tkinter (Screen):
         self.keys   = []
         self.funkey = ['', '', '', '', '', '', '', '', '', '']
         self.win_root.bind ("<Key>", self.keyhandler)
-        if self.input:
-            self.keys.extend (self.input.read ())
+        if self.kinput:
+            self.keys.extend (self.kinput)
     # end def __init__
 
     def clear_graphics_screen (self):
@@ -576,7 +578,7 @@ class Screen_Tkinter (Screen):
                     self.cur_col -= 1
                 continue
             if c == '\n' or c == '\r':
-                self.cmd_print ('\n', end = '')
+                #self.cmd_print ('\n', end = '')
                 return ''.join (buf)
             self.cmd_print (c, end = '')
             buf.append (c)
@@ -1293,14 +1295,25 @@ class Interpreter:
     def __init__ (self, args, test = None):
         self.args   = args
         self.test   = test
-        self.input  = None
+        self.kinput = None
         self.tab    = args.tab
         if not self.tab:
             self.tab = self.tabpos
         if test is not None and test.input is not None:
-            self.input = test.input
-        elif args.input_file:
-            self.input = open (args.input_file, 'r')
+            self.kinput = test.input.read ()
+        else:
+            if args.input_file:
+                with open (args.input_file, 'r') as f:
+                    self.kinput = f.read ()
+            if args.keystring:
+                ks = bytes (args.keystring, 'utf-8')
+                ks = ks.decode ('unicode_escape')
+                if self.kinput:
+                    self.kinput = self.kinput + ks
+                else:
+                    self.kinput = ks
+
+
         self.col       = 0
         self.lines     = {}
         self.stack     = Exec_Stack ()
@@ -1335,9 +1348,9 @@ class Interpreter:
         elif args.output_file:
             self.ofile = open (args.output_file, 'w')
         if self.args.screen == 'tkinter':
-            self.screen = Screen_Tkinter (self, self.input, self.ofile)
+            self.screen = Screen_Tkinter (self, self.kinput, self.ofile)
         else:
-            self.screen = Screen (self, self.input, self.ofile)
+            self.screen = Screen (self, self.kinput, self.ofile)
 
         if test is not None:
             self.compile (test.program)
@@ -1766,11 +1779,14 @@ class Interpreter:
     # end def cmd_kill
 
     def cmd_line_input (self, fhandle, lhs):
-        file = sys.stdout
+        file = None
         if fhandle is not None:
             file = self.files [fhandle]
         lhs = lhs ()
-        v = file.readline ().rstrip ('\r\n') [:255]
+        if file is not None:
+            v = file.readline ().rstrip ('\r\n') [:255]
+        else:
+            v = self.screen.cmd_input ('')
         lhs.set (v)
     # end def cmd_line_input
 
@@ -3288,8 +3304,13 @@ def options (argv):
         , action  = 'store_true'
         )
     cmd.add_argument \
+        ( '-k', '--keystring'
+        , help = 'Pre-fill keyboard buffer with given string, may'
+                 ' contain escape sequences'
+        )
+    cmd.add_argument \
         ( '-i', '--input-file'
-        , help = 'Read input from file instead of stdin'
+        , help = 'Pre-fill keyboard buffer with contents from file'
         )
     cmd.add_argument \
         ( '-L', '--break-line'
