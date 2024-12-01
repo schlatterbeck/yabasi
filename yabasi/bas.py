@@ -28,6 +28,7 @@ from argparse import ArgumentParser
 from io import StringIO
 from PIL import Image, ImageTk, ImageGrab
 from math import prod
+import operator
 import itertools
 import tkinter
 import numpy as np
@@ -1464,6 +1465,10 @@ class Interpreter:
             self.lines [k] = r
     # end def insert
 
+    def is_single (self, e):
+        return self.args.single_precision and (e not in '#%$' or e == '!')
+    # end def is_single
+
     def lset_rset_mid_paramcheck (self, lhs, expr):
         if not isinstance (expr, (str, bytes)):
             self.raise_error ('Non-string expression')
@@ -1617,6 +1622,8 @@ class Interpreter:
                 dtype = object
             elif v.endswith ('%'):
                 dtype = int
+            if self.is_single (v [-1]):
+                dtype = np.single
             self.dim [v] = np.zeros (l, dtype = dtype)
     # end def cmd_dim
 
@@ -2242,7 +2249,10 @@ class Interpreter:
         if len (p) == 2:
             p [0] = (p [1],)
         else:
-            p [0] = (p [1], p [2])
+            if isinstance (p [2], tuple):
+                p [0] = (p [1], p [2][0])
+            else:
+                p [0] = (p [1], p [2])
     # end def p_close_statement
 
     def p_color_statement (self, p):
@@ -2433,7 +2443,10 @@ class Interpreter:
         elif fn == 'tab':
             fun = self.fun_tab
         elif fn == 'val':
-            fun = float
+            if self.args.single_precision:
+                fun = np.single
+            else:
+                fun = float
         elif fn == 'space$':
             fun = fun_space
         else:
@@ -2443,7 +2456,12 @@ class Interpreter:
                 fn = 'sqrt'
             if fn == 'atn':
                 fn = 'arctan'
-            fun = getattr (np, fn)
+            if self.args.single_precision:
+                f = getattr (np, fn)
+                def fun (x):
+                    return np.single (f (np.single (x)))
+            else:
+                fun = getattr (np, fn)
         p3 = p [3]
         def x ():
             return fun (p3 ())
@@ -2505,9 +2523,14 @@ class Interpreter:
         """
         p1 = p [1]
         p3 = p [3]
-        def x ():
-            r = [int (k) for k in p3 ()]
-            return self.dim [p1][*r]
+        if self.is_single (p1 [-1]):
+            def x ():
+                r = [int (k) for k in p3 ()]
+                return np.single (self.dim [p1][*r])
+        else:
+            def x ():
+                r = [int (k) for k in p3 ()]
+                return self.dim [p1][*r]
         p [0] = x
     # end def p_expression_indexed_array
 
@@ -2558,18 +2581,41 @@ class Interpreter:
         """
         f1 = p [1]
         f3 = p [3]
+        if self.args.single_precision:
+            def fixtype (a, b, op):
+                if isinstance (a, str) or isinstance (b, str):
+                    return op (a, b)
+                if not isinstance (a, float) and not isinstance (b, float):
+                    return np.single (op (np.single (a), np.single (b)))
+                return op (a, b)
         if p [2] == '+':
-            def x ():
-                return f1 () + f3 ()
+            if self.args.single_precision:
+                def x ():
+                    return fixtype (f1 (), f3 (), operator.add)
+            else:
+                def x ():
+                    return f1 () + f3 ()
         elif p [2] == '-':
-            def x ():
-                return f1 () - f3 ()
+            if self.args.single_precision:
+                def x ():
+                    return fixtype (f1 (), f3 (), operator.sub)
+            else:
+                def x ():
+                    return f1 () - f3 ()
         elif p [2] == '*':
-            def x ():
-                return f1 () * f3 ()
+            if self.args.single_precision:
+                def x ():
+                    return fixtype (f1 (), f3 (), operator.mul)
+            else:
+                def x ():
+                    return f1 () * f3 ()
         elif p [2] == '/':
-            def x ():
-                return f1 () / f3 ()
+            if self.args.single_precision:
+                def x ():
+                    return fixtype (f1 (), f3 (), operator.truediv)
+            else:
+                def x ():
+                    return f1 () / f3 ()
         elif p [2] == 'MOD':
             def x ():
                 return f1 () % f3 ()
@@ -2598,8 +2644,12 @@ class Interpreter:
             def x ():
                 return (f1 () or f3 ())
         elif p [2] == '^':
-            def x ():
-                return f1 () ** f3 ()
+            if self.args.single_precision:
+                def x ():
+                    return fixtype (f1 (), f3 (), operator.pow)
+            else:
+                def x ():
+                    return f1 () ** f3 ()
         elif p [2] == '\\':
             def x ():
                 return f1 () // f3 ()
@@ -2633,8 +2683,12 @@ class Interpreter:
             default = ''
         elif p1.endswith ('%'):
             default = 0
-        def x ():
-            return self.var.get (p1, default)
+        if self.is_single (p1 [-1]):
+            def x ():
+                return np.single (self.var.get (p1, default))
+        else:
+            def x ():
+                return self.var.get (p1, default)
         return x
     # end def _var_helper
 
@@ -2682,9 +2736,9 @@ class Interpreter:
                       | fieldlist COMMA NUMBER AS lhs
         """
         if len (p) == 4:
-            p [0] = [(p [1], p [3])]
+            p [0] = [(p [1][0], p [3])]
         else:
-            p [0] = p [1] + [(p [3], p [5])]
+            p [0] = p [1] + [(p [3][0], p [5])]
     # end def p_fieldlist
 
     def p_for_statement (self, p):
@@ -2708,7 +2762,10 @@ class Interpreter:
                           | GET coord MINUS coord COMMA VAR
         """
         if len (p) == 3:
-            p [0] = (p [1], p [2])
+            if isinstance (p [2], tuple):
+                p [0] = (p [1], p [2][0])
+            else:
+                p [0] = (p [1], p [2])
         else:
             cmd = 'get_graphics'
             p [0] = [cmd, p [6], p [2][0], p [2][1], p [4][0], p [4][1]]
@@ -2718,14 +2775,14 @@ class Interpreter:
         """
             goto-statement : GOTO NUMBER
         """
-        p [0] = [p [1], p [2]]
+        p [0] = [p [1], p [2][0]]
     # end def p_goto_statement
 
     def p_gosub_statement (self, p):
         """
             gosub-statement : GOSUB NUMBER
         """
-        p [0] = [p [1], p [2]]
+        p [0] = [p [1], p [2][0]]
     # end def p_gosub_statement
 
     def p_if_start (self, p):
@@ -2745,16 +2802,25 @@ class Interpreter:
                          | IF expr THEN statement ELSE statement
         """
         if len (p) == 5:
-            p [0] = [p [1], p [2], p [4]]
+            if isinstance (p [4], tuple) and not callable (p [4][0]):
+                p [0] = [p [1], p [2], p [4][0]]
+            else:
+                p [0] = [p [1], p [2], p [4]]
         else:
-            p [0] = [p [1], p [2], p [4], p [6]]
+            p4 = p [4]
+            p6 = p [6]
+            if isinstance (p4, tuple) and not callable (p4 [0]):
+                p4 = p4 [0]
+            if isinstance (p6, tuple) and not callable (p6 [0]):
+                p6 = p6 [0]
+            p [0] = [p [1], p [2], p4, p6]
     # end def p_if_statement
 
     def p_if_statement_without_then (self, p):
         """
             if-statement : IF expr GOTO NUMBER
         """
-        p [0] = [p [1], p [2], p [4]]
+        p [0] = [p [1], p [2], p [4][0]]
     # end def p_if_statement_without_then
 
     def p_input_statement (self, p):
@@ -2766,7 +2832,7 @@ class Interpreter:
         if len (p) == 4:
             p [0] = (p [1], p [3], '')
         else:
-            p [0] = (p [1], p [4], p [2])
+            p [0] = (p [1], p [4], p [2][0])
     # end def p_input_statement
 
     def p_input_statement_multi (self, p):
@@ -2788,9 +2854,9 @@ class Interpreter:
                     | intlist COMMA HEXNUMBER
         """
         if len (p) == 2:
-            p [0] = [p [1]]
+            p [0] = [p [1][0]]
         else:
-            p [0] = p [1] + [p [3]]
+            p [0] = p [1] + [p [3][0]]
     # end def p_intlist
 
     def p_key_statement (self, p):
@@ -2902,10 +2968,13 @@ class Interpreter:
                     | STRING_SQ
         """
         copro = '{math co-processor}'
-        if isinstance (p [1], str) and copro in p [1]:
-            p [0] = p [1].replace (copro, '*******************')
+        if isinstance (p [1][0], str) and copro in p [1][0]:
+            p [0] = p [1][0].replace (copro, '*******************')
         else:
-            p [0] = p [1]
+            p [0] = p [1][0]
+            if self.args.single_precision:
+                # Cast to type from lexer
+                p [0] = p [1][1] (p [1][0])
     # end def p_literal
 
     def p_literal_list (self, p):
@@ -2925,7 +2994,7 @@ class Interpreter:
                         | MINUS NUMBER
         """
         if len (p) == 3:
-            p [0] = -p [2]
+            p [0] = -p [2][0]
         else:
             p [0] = p [1]
     # end def p_literal_neg
@@ -2970,7 +3039,7 @@ class Interpreter:
         """
             onerrgoto-statement : ON ERROR GOTO NUMBER
         """
-        p [0] = ['onerr_goto', p [4]]
+        p [0] = ['onerr_goto', p [4][0]]
     # end def p_onerror_goto_statement
 
     def p_ongoto_statement (self, p):
@@ -3118,10 +3187,17 @@ class Interpreter:
                           | PUT NUMBER  COMMA NUMBER
                           | PUT coord COMMA VAR put-option
         """
+        if len (p) in (3, 5):
+            p1 = p [1]
+            if isinstance (p1, tuple):
+                p1 = p1 [0]
         if len (p) == 3:
-            p [0] = (p [1], p [2])
+            p [0] = (p1, p [2])
         elif len (p) == 5:
-            p [0] = (p [1], p [2], p [4])
+            p4 = p [4]
+            if isinstance (p4, tuple):
+                p4 = p4 [0]
+            p [0] = (p1, p [2], p4)
         else:
             p [0] = ('put_graphics', p [2][0], p [2][1], p [4], p [5])
     # end def p_put_statement
@@ -3155,7 +3231,7 @@ class Interpreter:
         if len (p) == 2:
             p [0] = [p [1], None]
         else:
-            p [0] = [p [1], p [2]]
+            p [0] = [p [1], p [2][0]]
     # end def p_restore_statement
 
     def p_resume_statement (self, p):
@@ -3167,6 +3243,8 @@ class Interpreter:
         p2 = 0
         if len (p) > 2:
             p2 = p [2]
+            if isinstance (p [2], tuple):
+                p2 = p2 [0]
         p [0] = [p [1], p2]
     # end def p_resume_statement
 
@@ -3177,7 +3255,7 @@ class Interpreter:
         """
         line = None
         if len (p) > 2:
-            line = p [2]
+            line = p [2][0]
         p [0] = [p [1], line]
     # end def p_return_statement
 
@@ -3323,14 +3401,19 @@ def options (argv):
         , help = 'Write output to given file'
         )
     cmd.add_argument \
+        ( '--print-version'
+        , help    = 'Print version number and exit'
+        , action  = 'store_true'
+        )
+    cmd.add_argument \
         ( '-S', '--screen'
         , help    = 'Screen emulation'
         , choices = ('None', 'tkinter')
         , default = 'None'
         )
     cmd.add_argument \
-        ( '--print-version'
-        , help    = 'Print version number and exit'
+        ( '-s', '--single-precision'
+        , help    = 'Enforce single precision for normal float numbers'
         , action  = 'store_true'
         )
     cmd.add_argument \

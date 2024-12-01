@@ -23,6 +23,7 @@
 # SOFTWARE.
 # ****************************************************************************
 
+import numpy as np
 from ply import lex
 
 class Tokenizer:
@@ -185,35 +186,40 @@ class Tokenizer:
     def t_HEXNUMBER (self, t):
         r'&h[0-9A-Fa-f]+'
         v = int (t.value [2:], 16)
-        t.value = v
+        t.value = (v, int)
         return t
     # end def t_HEXNUMBER
+
+    typmap = {'#': float, '!': np.single, '%': int}
 
     def t_NUMBER (self, t):
         r'([0-9]*[.]\s*)?[0-9]+([eE][+-]?[0-9]+)?[#%!]?'
         v = t.value
+        typ = np.single
+        # '#': double precision, '%': int, '!': single precision
         if v.endswith ('#') or v.endswith ('!') or v.endswith ('%'):
+            typ = self.typmap [v [-1]]
             if v.endswith ('!') or v.endswith('%'):
                 assert v [:-1].isdecimal ()
             v = v [:-1]
-        if v.isdecimal ():
-            t.value = int (v)
+        if v.isdecimal () or typ is int:
+            t.value = (int (v), int)
         else:
-            t.value = float (v.replace (' ', ''))
+            t.value = (float (v.replace (' ', '')), typ)
         return t
     # end def t_NUMBER
 
     def t_STRING_DQ (self, t):
         r'["][^"]*["]'
         v = t.value.strip ('"')
-        t.value = v
+        t.value = (v, str)
         return t
     # end def t_STRING_DQ
 
     def t_STRING_SQ (self, t):
         r"['][^']*[']"
         v = t.value.strip ("'")
-        t.value = v
+        t.value = (v, str)
         return t
     # end def t_STRING_SQ
 
