@@ -1682,13 +1682,13 @@ class Interpreter:
         if isinstance (a, str) or isinstance (b, str):
             return op (a, b)
         if not isinstance (a, float) and not isinstance (b, float):
-            if self.args.emulate_basica_float_mul and op == operator.truediv:
+            if self.args.emulate_basica_float and op == operator.truediv:
                 return (MBF_Float.from_float (a) / b).as_float ()
-            elif self.args.emulate_basica_float_mul and op == operator.mul:
+            elif self.args.emulate_basica_float and op == operator.mul:
                 return (MBF_Float.from_float (a) * b).as_float ()
-            elif self.args.emulate_basica_float_mul and op == operator.add:
+            elif self.args.emulate_basica_float and op == operator.add:
                 return (MBF_Float.from_float (a) + b).as_float ()
-            elif self.args.emulate_basica_float_mul and op == operator.sub:
+            elif self.args.emulate_basica_float and op == operator.sub:
                 return (MBF_Float.from_float (a) - b).as_float ()
             else:
                 return np.single (op (np.single (a), np.single (b)))
@@ -3657,7 +3657,7 @@ def options (argv):
         , action  = 'store_true'
         )
     cmd.add_argument \
-        ( '--emulate-basica-float-mul'
+        ( '--emulate-basica-float'
         , help    = 'Try emulating basica float multiplication, needs'
                     ' single precision enabled to do anything'
         , action  = 'store_true'
