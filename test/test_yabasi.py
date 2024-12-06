@@ -27,6 +27,8 @@ import re
 import os
 import sys
 import inspect
+import doctest
+import yabasi
 from textwrap import dedent
 from yabasi.bas import Interpreter, options, Interpreter_Test
 
@@ -416,3 +418,28 @@ class Test_Graphics (_Test_Common):
     # end def test_canvas_input
 
 # end class Test_Graphics
+
+class Test_Doctest:
+
+    flags = doctest.NORMALIZE_WHITESPACE
+
+    def run_test (self, module, n):
+        f, t  = doctest.testmod \
+            (module, verbose = False, optionflags = self.flags)
+        fn = os.path.basename (module.__file__)
+        format_ok  = '%(fn)s passes all of %(t)s doc-tests'
+        format_nok = '%(fn)s fails %(f)s of %(t)s doc-tests'
+        if f:
+            msg = format_nok % locals ()
+        else:
+            msg = format_ok % locals ()
+        exp = '%s passes all of %d doc-tests' % (fn, n)
+        assert exp == msg
+    # end def run_test
+
+    def test_bas (self):
+        num_tests = 72
+        self.run_test (yabasi.bas, num_tests)
+    # end def test_bas
+
+# end class Test_Doctest
