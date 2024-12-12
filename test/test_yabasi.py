@@ -438,8 +438,13 @@ class Test_Doctest:
     # end def run_test
 
     def test_bas (self):
-        num_tests = 72
+        num_tests = 22
         self.run_test (yabasi.bas, num_tests)
     # end def test_bas
+
+    def test_mbf (self):
+        num_tests = 50
+        self.run_test (yabasi.mbf, num_tests)
+    # end def test_mbf
 
 # end class Test_Doctest
