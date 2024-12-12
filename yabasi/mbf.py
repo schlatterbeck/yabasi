@@ -196,6 +196,22 @@ class MBF_Float:
         return np.single (struct.unpack ('<f', bytes (b)) [0])
     # end def as_float
 
+    def as_mbf (self):
+        """ Return as MBF encoding
+        >>> MBF_Float.from_float (18193.0).as_mbf ()
+        b'\\x8f\\x0e"\\x00'
+        >>> MBF_Float (0, 0, 0).as_mbf ()
+        b'\\x00\\x00\\x00\\x00'
+        """
+        if self.exp == 0:
+            return b'\0\0\0\0'
+        mn1 = (self.mnt >> 16) & 0x7F + 0x80 * self.sign
+        mn2 = (self.mnt >>  8) & 0xFF
+        mn3 = (self.mnt >>  0) & 0xFF
+        b = struct.pack ('<4B', self.exp + 129, mn1, mn2, mn3)
+        return b
+    # end def as_mbf
+
     def multiply (self, other):
         """ Multiply two MBF_Float numbers
         >>> a = MBF_Float.from_float (15.)

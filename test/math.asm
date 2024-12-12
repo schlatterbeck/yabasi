@@ -1,3 +1,4 @@
+.org 0x0
 ; Swith section to data
 jmp DOIT
 ;.bss
@@ -114,14 +115,12 @@ TSTEVN: POPF			;IF ZF=1 MUST CLEAR LOW BIT OF DL
 	AND	DL,0xfe		;CLEAR LOW BIT
 PAKSP:				;PAK SINGLE PRECISION FAC. EXPONENT IS IN FAC,SIGN IN FAC+1
 				;THE MANTISSA IS IN (BLDX)
-	MOV	SI,FAC-3	;LOAD ADDRESS OF FAC IN SI
-	MOV	WORD PTR 0[SI],DX	;MOVE LOWER MANTISSA WORD IN
-	INC	SI		;INCREMENT TO HIGH MANTISSA BYTE
-	INC	SI		;
+	MOV	SI,FAC	;LOAD ADDRESS OF FAC IN SI
+	MOV	WORD PTR 1[SI],DX	;MOVE LOWER MANTISSA WORD IN
 	MOV	BH,BYTE PTR [FAC+1]	;FETCH SIGN
 	AND	BX,0x807f	;CLEAR ALL BUT SIGN IN BH SIGN IN BL
 	OR	BL,BH		;(BL) NOW IN CORRECT FORMAT
-	MOV	BYTE PTR 0[SI],BL	;PUT INTO FAC-1
+	MOV	BYTE PTR 1[SI],BL	;PUT INTO FAC+1
 	RET
 
 ;*************************************************************
@@ -278,17 +277,19 @@ FMS37:
 ;       CALLING SEQUENCE:       CALL    $FSUBS
 ;
 ;**********************************************************
-FEXIT1: MOV     WORD PTR [FAC-1],BX      ;MOV (BXDX) TO $FAC
+FEXIT1: XCHG    BH,BL           ;MOV (BXDX) TO $FAC
+        MOV     WORD PTR [FAC],BX
         MOV     WORD PTR [FACLO],DX
 EXIT2:  RET
-$FSUBS: MOV     AX,WORD PTR [FAC-1]      ;FETCH FAC
+$FSUBS: MOV     AX,WORD PTR [FAC]      ;FETCH FAC
         OR      AH,AH           ;IF ZF=1 (BXDX) IS ANSWER
         JZ      FEXIT1          ;(BXDX) IS THE ANSWER
-        XOR     BYTE PTR [FAC-1],0x80 ;FLIP SIGN
+        XOR     BYTE PTR [FAC+1],0x80 ;FLIP SIGN
 $FADDS:                 ;($FAC)=(BXDX)+($FAC)
         OR      BH,BH           ;WILL FIRST CHECK EXPONENT OF (BXDX)
         JZ      EXIT2           ;ANS ALREADY IN $FAC
-        MOV     AX,WORD PTR [FAC-1]      ;WILL NOW CHECK $FAC AND IF ZERO
+        MOV     AX,WORD PTR [FAC]      ;WILL NOW CHECK $FAC AND IF ZERO
+        XCHG    AL,AH
         OR      AH,AH           ;ANSWER IN (BXDX) AND MUST MOVE
         JZ      FEXIT1          ;MOVE (BXDX) TO FAC
                                 ;****************************************************
@@ -316,7 +317,7 @@ $FADDS:                 ;($FAC)=(BXDX)+($FAC)
                                 ;******************************************************
 
         XOR     CX,CX           ;(CX)=0
-        MOV     SI,WORD PTR [FACLO]      ;(SI)=($FAC-2,$FACLO)
+        MOV     SI,WORD PTR [FACLO]    ;(SI)=($FAC-2,$FACLO)
         MOV     BYTE PTR [FAC+1],AL      ;ASSUME SIGN OF $FAC
         MOV     CL,AH           ;SINCE ASSUME $FAC LARGER
         SUB     CL,BH           ;CL WILL HOLD SHIFT COUNT
@@ -358,7 +359,7 @@ FA22:   OR      CX,CX           ;ZF=1 IF EXPONENTS THE SAME
         MOV     AH,BYTE PTR [FAC+1]      ;FETCH SIGN
         AND     AX,0x807f       ;CLEAR SIGN IN AH, ALL BUT SIGN IN AL
         OR      AL,AH           ;RESTORE SIGN
-        MOV     BYTE PTR [FAC-1],AL      ;$FAC NOW CORRECTLY BUILT
+        MOV     BYTE PTR [FAC+1],AL      ;$FAC NOW CORRECTLY BUILT
         RET
 FA23:
                                 ;WILL TRY FOR BYTE MOVES
@@ -469,7 +470,7 @@ NOR20:  MOV     BYTE PTR [FAC],BH        ;UPDATE EXPONENT
 ;               (FLOATING POINT ) NUMBER AND STORES IT IN THE FAC
 ;               AND SETS $VALTP=4
 ;*****************************************************************
-$FLT:   XOR     BX,BX           ;CLEAR HIGH MANTISSA BYTE (BL)
+$LT:   XOR     BX,BX           ;CLEAR HIGH MANTISSA BYTE (BL)
         XOR     AH,AH           ;CLEAR OVERFLOW BYTE
         MOV     SI,FAC+1        ;FETCH $FAC ADDRESS TO (SI)
         MOV     BYTE PTR [SI-1],0x90 ;SET EXPONENT TO 16
@@ -487,5 +488,10 @@ FLT10:  MOV     BL,DH           ;WILL MOVE (DX) TO (BLDH)
 
 
 DOIT:
-	CALL $FLT
+	HLT
+	HLT
+	HLT
+	HLT
+	HLT
+	HLT
 	HLT

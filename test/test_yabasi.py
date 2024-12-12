@@ -31,6 +31,10 @@ import doctest
 import yabasi
 from textwrap import dedent
 from yabasi.bas import Interpreter, options, Interpreter_Test
+try:
+    import asm
+except ImportError:
+    asm = None
 
 class _Test_Common:
 
@@ -443,7 +447,7 @@ class Test_Doctest:
     # end def test_bas
 
     def test_mbf (self):
-        num_tests = 50
+        num_tests = 52
         self.run_test (yabasi.mbf, num_tests)
     # end def test_mbf
 
