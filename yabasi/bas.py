@@ -149,7 +149,7 @@ def fun_space (expr):
 # end def fun_space
 
 def fun_str (expr):
-    if isinstance (expr, (float, int)):
+    if isinstance (expr, (float, int, np.single)):
         return format_float (expr).rstrip ()
     return str (expr)
 # end def fun_str
@@ -226,6 +226,7 @@ class MBF_Float:
         See https://en.wikipedia.org/wiki/Microsoft_Binary_Format
     """
 
+    debug = True
     ubit = 1 << 23
 
     def __init__ (self, sign, exponent, mantissa):
@@ -342,6 +343,12 @@ class MBF_Float:
             ex -= 1
         if ex < -126:
             return MBF_Float (0, 0, 0)
+        if self.debug:
+            a = self.as_float ()
+            b = other.as_float ()
+            v = a + b
+            if abs (v - MBF_Float (s, ex, mn).as_float ()) / v >= 0.01:
+                import pdb; pdb.set_trace ()
         return MBF_Float (s, ex, mn)
     # end def add
     __add__ = add
@@ -428,6 +435,12 @@ class MBF_Float:
             r <<= 1
         if ex < -126:
             return MBF_Float (0, 0, 0)
+        if self.debug:
+            a = self.as_float ()
+            b = other.as_float ()
+            v = a * b
+            if abs (v - MBF_Float (s, ex, r).as_float ()) / v >= 0.01:
+                import pdb; pdb.set_trace ()
         return MBF_Float (s, ex, r)
     # end def multiply
     __mul__ = multiply
@@ -2180,7 +2193,7 @@ class Interpreter:
                 if fmt:
                     f = fmt.get ()
                     v = f % v
-                elif isinstance (v, float):
+                elif isinstance (v, (float, np.single)):
                     v = format_float (v)
                 v = str (v)
                 self.col += len (v)
