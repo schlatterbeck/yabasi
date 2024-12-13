@@ -325,6 +325,8 @@ class Test_MBF:
         assert r.as_float () == 18193.0
         r = m.int_to_float (0x7fff)
         assert r.as_float () == 32767.0
+        r = m.int_to_float (-1)
+        assert r.as_float () == -1.0
     # end def test_int_to_float
 
     def test_add (self):
@@ -332,14 +334,14 @@ class Test_MBF:
         a = MBF_Float (0, 23, 0xffffff)
         b = MBF_Float.from_float (1.0)
         assert a.as_float () == 16777215.0
-        assert (a + b).as_float () == 16777215.0
-        assert m.add (a, b).as_float () == 16777215.0
+        assert (a + b).as_float () == 16777216.0
+        assert m.add (a, b).as_float () == 16777216.0
         b = MBF_Float.from_float (2.0)
         assert (a + b).as_float () == 16777216.0
         assert m.add (a, b).as_float () == 16777216.0
         b = MBF_Float.from_float (-1.0)
-        assert (a + b).as_float () == 16777215.0
-        assert m.add (a, b).as_float () == 16777215.0
+        assert (a + b).as_float () == 16777214.0
+        assert m.add (a, b).as_float () == 16777214.0
         b = MBF_Float.from_float (-2.0)
         assert (a + b).as_float () == 16777213.0
         assert (b + a).as_float () == 16777213.0
@@ -362,10 +364,12 @@ class Test_MBF:
 
     def test_mul (self):
         m = asm.GWBasic_Math (verbose = 0, debug = 0)
-        #a = MBF_Float (0, 23, 0xffffff)
-        #b = MBF_Float.from_float (-1.0)
-        #assert (a * b).as_float () == -16777215.0
-        #assert m.mul (a, b).as_float == -16777215.0
+        a = MBF_Float (0, 23, 0xffffff)
+        b = MBF_Float.from_float (-1.0)
+        assert (a * b).as_float () == -16777215.0
+        assert m.mul (a, b).as_float () == -16777215.0
+        assert (a * a) == MBF_Float (0, 47, 0xfffffe)
+        assert m.mul (a, a) == MBF_Float (0, 47, 0xfffffe)
     # end def test_mul
 
 # end class Test_MBF
@@ -506,7 +510,7 @@ class Test_Doctest:
     # end def test_bas
 
     def test_mbf (self):
-        num_tests = 52
+        num_tests = 54
         self.run_test (yabasi.mbf, num_tests)
     # end def test_mbf
 

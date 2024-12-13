@@ -12,9 +12,9 @@ class GWBasic_Math:
     # FIXME: These are the addresses of functions we want to call.
     # They should really be retrieved from the assembler but found no
     # way to do this.
-    flt   = 0x2e1
-    fmuls = 0x107
-    fadds = 0x1b6
+    flt   = 0x2e5
+    fmuls = 0x10b
+    fadds = 0x1ba
 
     def __init__ (self, fn = 'test/math.asm', verbose = 0, debug = False):
         self.verbose = verbose
@@ -124,6 +124,24 @@ class GWBasic_Math:
         return self.to_mbf ()
     # end def int_to_float
 
+    def mul (self, num1, num2):
+        self.setup ()
+        num = struct.unpack ('>HH', num1.as_mbf ())
+        if self.verbose:
+            print ('BX:%04x DX:%04x' % num)
+        self.uc.reg_write (x86_const.UC_X86_REG_BX, num [0])
+        self.uc.reg_write (x86_const.UC_X86_REG_DX, num [1])
+        self.uc.mem_write (10, num2.as_mbf ())
+        if self.verbose:
+            print (' '.join ('%02x' % k for k in self.uc.mem_read (6, 10)))
+        self.setup_call (self.fmuls)
+        self.uc.reg_write (x86_const.UC_X86_REG_SP, 0)
+        self.uc.emu_start (self.adr, self.adr + len (self.code))
+        if self.verbose:
+            print (' '.join ('%02x' % k for k in self.uc.mem_read (6, 10)))
+        return self.to_mbf ()
+    # end def mul
+
     def setup_call (self, adr):
         b = b'\x66\xe8' + struct.pack ('<l', adr - (self.calladr + 6))
         self.uc.mem_write (self.calladr, b)
@@ -187,5 +205,8 @@ if __name__ == '__main__':
     #print (r.as_float ())
     #r = m.int_to_float (0x4711)
     #print (r.as_float ())
-    r = m.add (MBF_Float (0, 23, 0xffffff), MBF_Float.from_float (-16777214.0))
-    print (r.as_float ())
+    #r = m.add (MBF_Float (0, 23, 0xffffff), MBF_Float.from_float (-16777214.0))
+    #print (r.as_float ())
+    a = MBF_Float (0, 23, 0xffffff)
+    r = m.mul (a, a)
+    print (r)

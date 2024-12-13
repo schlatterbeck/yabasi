@@ -48,6 +48,14 @@ class MBF_Float:
     # end def __str__
     __repr__ = __str__
 
+    def __eq__ (self, other):
+        return \
+            (   self.exp  == other.exp
+            and self.sign == other.sign
+            and self.mnt == other.mnt
+            )
+    # end def __eq__
+
     def __sub__ (self, other):
         if isinstance (other, (float, np.single, int)):
             other = MBF_Float.from_float (other)
@@ -100,7 +108,7 @@ class MBF_Float:
         >>> print (a.as_float ())
         16777215.0
         >>> print ((a + 1).as_float ())
-        16777215.0
+        16777216.0
         >>> print ((a + 2).as_float ())
         16777216.0
         >>> print ((a - 1).as_float ())
@@ -108,7 +116,7 @@ class MBF_Float:
         >>> print ((a - a).as_float ())
         0.0
         >>> print ((a + a).as_float ())
-        33554428.0
+        33554430.0
         >>> print ((a - 1 - a).as_float ())
         -1.0
         >>> print (MBF_Float.from_float (9.186124e-09).as_float ())
@@ -128,10 +136,7 @@ class MBF_Float:
             return self
         exdif = abs (self.exp - other.exp)
         a, b  = (self, other) if self._abs > other._abs else (other, self)
-        # The Basic implementation drops the last bit on subtract, so it
-        # can never remove the last bit by subtraction
-        #if exdif > 23 or a.sign == b.sign and exdif > 22:
-        if exdif > 22:
+        if exdif > 23:
             return a
         s  = a.sign
         bm = b.mnt >> exdif
@@ -205,8 +210,12 @@ class MBF_Float:
         b'\\x8f\\x0e"\\x00'
         >>> MBF_Float (0, 0, 0).as_mbf ()
         b'\\x00\\x00\\x00\\x00'
+        >>> MBF_Float.from_float (-1.0).as_mbf ()
+        b'\\x81\\x80\\x00\\x00'
+        >>> MBF_Float.from_float (1.0).as_mbf ()
+        b'\\x81\\x00\\x00\\x00'
         """
-        if self.exp == 0:
+        if self.exp == 0 and self.mnt == 0:
             return b'\0\0\0\0'
         mn1 = (self.mnt >> 16) & 0x7F + 0x80 * self.sign
         mn2 = (self.mnt >>  8) & 0xFF
@@ -247,18 +256,24 @@ class MBF_Float:
             return MBF_Float (0, 0, 0)
         s  = self.sign ^ other.sign
         assert s in (0, 1)
-        ex = self.exp + other.exp + 1
-        m1 = self.mnt
+        ex = self.exp + other.exp
+        # MBF implementation seems to use an additional byte at bottom
+        m1 = self.mnt << 8
         r  = 0
         for b in bin (other.mnt)[2:]:
-            m1 >>= 1
             if b == '1':
                 r += m1
             if m1 == 0:
                 break
-        if r < self.ubit:
-            ex -= 1
-            r <<= 1
+            m1 >>= 1
+        # MBF does 'rounding': Add 0x80 to last byte of extended mantissa
+        # and remove 
+        r &= 0xffffffffe0
+        r += 0x80
+        r >>= 8
+        if r >= 1 << 24:
+            ex += 1
+            r >>= 1
         if ex < -126:
             return MBF_Float (0, 0, 0)
         if self.debug:
