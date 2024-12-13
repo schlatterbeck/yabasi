@@ -360,6 +360,21 @@ class Test_MBF:
         b = MBF_Float.from_float (-2.0)
         assert (a + b).as_float () == 1.0
         assert m.add (a, b).as_float () == 1.0
+        a = MBF_Float.from_float (-27.0)
+        b = MBF_Float.from_float (-36.0)
+        assert (a + b).as_float () == -63.0
+        assert m.add (a, b).as_float () == -63.0
+        a = MBF_Float.from_float (3.0)
+        b = MBF_Float.from_float (3.5)
+        assert (a + b).as_float () == 6.5
+        assert (b + a).as_float () == 6.5
+        assert m.add (a, b).as_float () == 6.5
+        assert m.add (b, a).as_float () == 6.5
+        b = MBF_Float.from_float (-3.5)
+        assert (a + b).as_float () == -0.5
+        assert (b + a).as_float () == -0.5
+        assert m.add (a, b).as_float () == -0.5
+        assert m.add (b, a).as_float () == -0.5
     # end def test_add
 
     def test_mul (self):
@@ -368,8 +383,37 @@ class Test_MBF:
         b = MBF_Float.from_float (-1.0)
         assert (a * b).as_float () == -16777215.0
         assert m.mul (a, b).as_float () == -16777215.0
+        assert (b * a).as_float () == -16777215.0
+        assert m.mul (b, a).as_float () == -16777215.0
         assert (a * a) == MBF_Float (0, 47, 0xfffffe)
         assert m.mul (a, a) == MBF_Float (0, 47, 0xfffffe)
+        a = MBF_Float.from_float (9.0)
+        b = MBF_Float.from_float (1.0) / 3
+        assert (a * b) == MBF_Float.from_float (3.0)
+        assert (b * a) == MBF_Float.from_float (3.0)
+        assert m.mul (a, b) == MBF_Float.from_float (3.0)
+        assert m.mul (b, a) == MBF_Float.from_float (3.0)
+        a = MBF_Float.from_float (0.00007)
+        b = MBF_Float.from_float (8.)
+        assert (a * b) == MBF_Float.from_float (0.00056)
+        assert (b * a) == MBF_Float.from_float (0.00056)
+        assert m.mul (a, b) == MBF_Float.from_float (0.00056)
+        assert m.mul (b, a) == MBF_Float.from_float (0.00056)
+        zero = MBF_Float (0, 0, 0)
+        assert (a * zero) == zero
+        assert (zero * a) == zero
+        assert m.mul (a, zero) == zero
+        assert m.mul (zero, a) == zero
+        c = MBF_Float (0, 23, 0xffffff)
+        res = MBF_Float (0, 47, 0xfffffe)
+        assert (c * c) == res
+        assert m.mul (c, c) == res
+        assert (c * c).as_float () == res.as_float ()
+        assert m.mul (c, c).as_float () == res.as_float ()
+        v = MBF_Float.from_float (9.584426879882812e-05)
+        res2 = MBF_Float.from_float (9.186124e-09)
+        assert (v * v) == res2
+        assert m.mul (v, v) == res2
     # end def test_mul
 
 # end class Test_MBF

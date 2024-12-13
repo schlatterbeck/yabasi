@@ -236,16 +236,16 @@ class MBF_Float:
         120.0
         >>> a = MBF_Float.from_float (0.00007)
         >>> print (a.multiply (b).as_float ())
-        0.00055999996
+        0.00056
         >>> print ((b * 0.00007).as_float ())
-        0.00055999996
+        0.00056
         >>> print (a.multiply (MBF_Float (0, 0, 0)).as_float ())
         0.0
         >>> c = MBF_Float (0, 23, 0xffffff)
         >>> print (c.multiply (c))
-        MBF_Float (0, 47, 0xffffe7)
+        MBF_Float (0, 47, 0xfffffe)
         >>> print (c.multiply (c).as_float ())
-        281474560000000.0
+        281474940000000.0
         >>> v = 9.584426879882812e-05
         >>> print ((MBF_Float.from_float (v) * v).as_float ())
         9.186124e-09
@@ -267,7 +267,7 @@ class MBF_Float:
                 break
             m1 >>= 1
         # MBF does 'rounding': Add 0x80 to last byte of extended mantissa
-        # and remove 
+        # after removing some unneeded bits at the bottom
         r &= 0xffffffffe0
         r += 0x80
         r >>= 8
@@ -289,7 +289,7 @@ class MBF_Float:
     def __truediv__ (self, other):
         """ Convenience method for division
         >>> print ((MBF_Float.from_float (9.0) / 3.0).as_float ())
-        2.9999995
+        3.0
         """
         if isinstance (other, self.__class__):
             other = other.as_float ()

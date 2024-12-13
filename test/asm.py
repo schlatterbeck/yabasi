@@ -12,7 +12,7 @@ class GWBasic_Math:
     # FIXME: These are the addresses of functions we want to call.
     # They should really be retrieved from the assembler but found no
     # way to do this.
-    flt   = 0x2e5
+    flt   = 0x2ec
     fmuls = 0x10b
     fadds = 0x1ba
 
@@ -207,6 +207,9 @@ if __name__ == '__main__':
     #print (r.as_float ())
     #r = m.add (MBF_Float (0, 23, 0xffffff), MBF_Float.from_float (-16777214.0))
     #print (r.as_float ())
+    #a = MBF_Float (0, 23, 0xffffff)
+    #r = m.mul (a, a)
     a = MBF_Float (0, 23, 0xffffff)
-    r = m.mul (a, a)
-    print (r)
+    b = MBF_Float.from_float (-1.0)
+    r = m.add (a, b)
+    print (r.as_float ())

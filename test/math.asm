@@ -1,13 +1,13 @@
 .org 0x0
 ; Swith section to data
 jmp DOIT
-;.bss
+; FAC is the float accumulator
+; The byte *before* FAC is used for temp storage of sign
 ARG:   .word 0x0
 DPADR: .word 0x0
 FAC:   .word 0x0
 FACLO: .word 0x0
 VALTP: .word 0x4 ; single precision seems to be 0x4 aka 'LOW 4'
-;.endseg
 
 ;***********************************************************
 ;
@@ -119,7 +119,7 @@ PAKSP:				;PAK SINGLE PRECISION FAC. EXPONENT IS IN FAC,SIGN IN FAC+1
 	MOV	SI,FAC	;LOAD ADDRESS OF FAC IN SI
         XCHG    DL,DH
 	MOV	WORD PTR 2[SI],DX	;MOVE LOWER MANTISSA WORD IN
-	MOV	BH,BYTE PTR [FAC+1]	;FETCH SIGN
+	MOV	BH,BYTE PTR [FAC-1]	;FETCH SIGN
 	AND	BX,0x807f	;CLEAR ALL BUT SIGN IN BH SIGN IN BL
 	OR	BL,BH		;(BL) NOW IN CORRECT FORMAT
 	MOV	BYTE PTR 1[SI],BL	;PUT INTO FAC+1
@@ -153,7 +153,7 @@ SES00:	MOV	SI,BX		;WILL NEED FOR LATER
         ; It is again loaded later!
         AND     AL,0x80         ; Keep only sign
 	XOR	AL,CH		;CORRECT SIGN IN AL
-	MOV	BYTE PTR [FAC+1],AL	;MOVE TO FAC+1
+	MOV	BYTE PTR [FAC-1],AL	;MOVE TO FAC+1
 	MOV	AL,BH		;GET (BXDX) EXPONENT
 	XOR	AH,AH		;WILL USE 16-BIT ARITHEMETIC
 	MOV	BL,CL		;TO CALCULATE EXPONENTS
@@ -327,13 +327,14 @@ $FADDS:                 ;($FAC)=(BXDX)+($FAC)
         XCHG    AX,SI                  ; SI is wrong byte order, fix
         XCHG    AL,AH
         XCHG    AX,SI
-        MOV     BYTE PTR [FAC+1],AL      ;ASSUME SIGN OF $FAC
+        MOV     BYTE PTR [FAC-1],AL      ;ASSUME SIGN OF $FAC
         MOV     CL,AH           ;SINCE ASSUME $FAC LARGER
         SUB     CL,BH           ;CL WILL HOLD SHIFT COUNT
         JNB     FA20            ;JUMP IF $FAC EXP EQUAL OR LARGER
         NEG     CL              ;NEED POS. SHIFT COUNT
         XCHG    BL,BH
         MOV     WORD PTR [FAC],BX        ;SINCE (BXDX) LARGER MAGNITUDE
+        MOV     BYTE PTR [FAC-1],BH      ; Store other sign
         XCHG    BL,BH           ;GET EXP/SGN CORRECT AGAIN
         XCHG    BX,AX           ;WILL EXCHANGE (BXDX) AND (AXSI)
         XCHG    DX,SI           ;
@@ -365,7 +366,7 @@ FA22:   OR      CX,CX           ;ZF=1 IF EXPONENTS THE SAME
 ;**************************************************************
         POPF                    ;CLEAR SUBTRACT/ADD FLAG
         MOV     WORD PTR [FACLO],SI      ;RESTORE LOWER MANTISSA BITS
-        MOV     AH,BYTE PTR [FAC+1]      ;FETCH SIGN
+        MOV     AH,BYTE PTR [FAC-1]      ;FETCH SIGN
         AND     AX,0x807f       ;CLEAR SIGN IN AH, ALL BUT SIGN IN AL
         OR      AL,AH           ;RESTORE SIGN
         MOV     BYTE PTR [FAC+1],AL      ;$FAC NOW CORRECTLY BUILT
@@ -408,7 +409,7 @@ FA40:   POPF                    ;IF SF=1 WE MUST SUBTRACT MANTISSAS
         SBB     AL,BL           ;IF CARRY (CF) NOT SET THEN
         MOV     BL,AL
         JNB     FA90            ;ASSUMPTION OF $FAC LARGER VALID
-        NOT     BYTE PTR [FAC+1] ;MUST USE OTHER SIGN $FAC WASN'T
+        NOT     BYTE PTR [FAC-1] ;MUST USE OTHER SIGN $FAC WASN'T
         NOT     AH              ;LARGER
         NOT     DX
         NOT     BL
@@ -481,13 +482,13 @@ NOR20:  MOV     BYTE PTR [FAC],BH        ;UPDATE EXPONENT
 ;*****************************************************************
 $FLT:   XOR     BX,BX           ;CLEAR HIGH MANTISSA BYTE (BL)
         XOR     AH,AH           ;CLEAR OVERFLOW BYTE
-        MOV     SI,FAC+1        ;FETCH $FAC ADDRESS TO (SI)
-        MOV     BYTE PTR [SI-1],0x90 ;SET EXPONENT TO 16
-        MOV     BYTE PTR [SI],0    ;SET SIGN POSITIVE
+        MOV     SI,FAC          ;FETCH $FAC ADDRESS TO (SI)
+        MOV     BYTE PTR [SI],0x90 ;SET EXPONENT TO 16
+        MOV     BYTE PTR [SI-1],0    ;SET SIGN POSITIVE
         OR      DX,DX           ;SETS SF=1 IF NEGATIVE NO.
         JNS     FLT10           ;IF POSITIVE PROCEED
         NEG     DX              ;NEED POSTIVE MAGNITUDE
-        MOV     BYTE PTR 0[SI],0x80  ;SET SIGN TO NEGATIVE
+        MOV     BYTE PTR 0[SI-1],0x80  ;SET SIGN TO NEGATIVE
 FLT10:  MOV     BL,DH           ;WILL MOVE (DX) TO (BLDH)
         MOV     DH,DL           ;
         MOV     DL,BH           ;SET (DL)=0
