@@ -9,15 +9,16 @@ import unicorn
 from yabasi.mbf import MBF_Float
 
 class GWBasic_Math:
-    verbose = False
     # FIXME: These are the addresses of functions we want to call.
     # They should really be retrieved from the assembler but found no
     # way to do this.
-    flt   = 0x2d7 + 2
+    flt   = 0x2e1
     fmuls = 0x107
-    fadds = 0x1b2 + 2
+    fadds = 0x1b6
 
-    def __init__ (self, fn = 'test/math.asm'):
+    def __init__ (self, fn = 'test/math.asm', verbose = 0, debug = False):
+        self.verbose = verbose
+        self.debug   = debug
         lines = []
         with open (fn) as f:
             for line in f:
@@ -42,7 +43,7 @@ class GWBasic_Math:
             if count is not None:
                 print ('compiled %s instructions' % count)
             exit (23)
-        if self.verbose:
+        if self.verbose > 1:
             print ('assembled: len = %s' % len (code))
         self.code    = bytes (code)
         self.calladr = len (self.code) - 7
@@ -54,6 +55,9 @@ class GWBasic_Math:
             pos = int (pos, 16) - len (self.code)
             s   = ('0x%04x %s' % (pos, s)).rstrip ('>').rstrip ()
             self.idict [pos] = (s, bin)
+        if self.verbose > 1:
+            for n in sorted (self.idict):
+                print ('0x%04x: %s' % (n, self.idict [n]))
     # end def __init__
 
     def add (self, num1, num2):
@@ -65,17 +69,21 @@ class GWBasic_Math:
         """
         self.setup ()
         num = struct.unpack ('>HH', num1.as_mbf ())
-        print ('BX:%04x DX:%04x' % num)
+        if self.verbose:
+            print ('BX:%04x DX:%04x' % num)
         self.uc.reg_write (x86_const.UC_X86_REG_BX, num [0])
-        print ('BH:%02x' % self.uc.reg_read (x86_const.UC_X86_REG_BH))
-        print ('BL:%02x' % self.uc.reg_read (x86_const.UC_X86_REG_BL))
+        if self.verbose:
+            print ('BH:%02x' % self.uc.reg_read (x86_const.UC_X86_REG_BH))
+            print ('BL:%02x' % self.uc.reg_read (x86_const.UC_X86_REG_BL))
         self.uc.reg_write (x86_const.UC_X86_REG_DX, num [1])
         self.uc.mem_write (10, num2.as_mbf ())
-        print (' '.join ('%02x' % k for k in self.uc.mem_read (6, 10)))
+        if self.verbose:
+            print (' '.join ('%02x' % k for k in self.uc.mem_read (6, 10)))
         self.setup_call (self.fadds)
         self.uc.reg_write (x86_const.UC_X86_REG_SP, 0)
         self.uc.emu_start (self.adr, self.adr + len (self.code))
-        print (' '.join ('%02x' % k for k in self.uc.mem_read (6, 10)))
+        if self.verbose:
+            print (' '.join ('%02x' % k for k in self.uc.mem_read (6, 10)))
         return self.to_mbf ()
     # end def add
 
@@ -131,7 +139,8 @@ class GWBasic_Math:
         uc.reg_write (x86_const.UC_X86_REG_DS, 0)
         uc.reg_write (x86_const.UC_X86_REG_SS, 0x1000000 >> 8)
         # Single-step hook
-        uc.hook_add (unicorn.UC_HOOK_CODE, self.debug_hook)
+        if self.debug:
+            uc.hook_add (unicorn.UC_HOOK_CODE, self.debug_hook)
         self.uc = uc
     # end def setup
 
@@ -150,16 +159,33 @@ class GWBasic_Math:
 # end class GWBasic_Math
 
 if __name__ == '__main__':
-    m = GWBasic_Math ()
+    import sys
+    from argparse import ArgumentParser
+    cmd = ArgumentParser ()
+    cmd.add_argument \
+        ( '-v', '--verbose'
+        , action  = 'count'
+        , help    = 'Verbose reporting including disassembler listing'
+        , default = 0
+        )
+    cmd.add_argument \
+        ( '-D', '--debug'
+        , action = 'store_true'
+        , help   = 'Debugging with visited assembler lines'
+        )
+    args = cmd.parse_args (sys.argv [1:])
+    m = GWBasic_Math (verbose = args.verbose, debug = args.debug)
     #r = m.int_to_float (0x4711)
     #print (r.as_float ())
     #r = m.add (MBF_Float.from_float (0.0), MBF_Float.from_float (4.0))
     #print (r.as_float ())
     #r = m.add (MBF_Float.from_float (4.0), MBF_Float.from_float (0.0))
     #print (r.as_float ())
-    r = m.add (MBF_Float.from_float (4.0), MBF_Float.from_float (8.0))
-    print (r.as_float ())
-    r = m.add (MBF_Float.from_float (8.0), MBF_Float.from_float (4.0))
-    print (r.as_float ())
+    #r = m.add (MBF_Float.from_float (4.0), MBF_Float.from_float (8.0))
+    #print (r.as_float ())
+    #r = m.add (MBF_Float.from_float (8.0), MBF_Float.from_float (4.0))
+    #print (r.as_float ())
     #r = m.int_to_float (0x4711)
     #print (r.as_float ())
+    r = m.add (MBF_Float (0, 23, 0xffffff), MBF_Float.from_float (-16777214.0))
+    print (r.as_float ())

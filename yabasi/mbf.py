@@ -93,9 +93,7 @@ class MBF_Float:
     # end def _abs
 
     def add (self, other):
-        """ Addition: In anticipation of a carry of the highest bit we
-            shift by one bit before addition. This doesn't apply when the
-            signs are different.
+        """ Addition
         >>> print ((MBF_Float.from_float (23) + 23).as_float ())
         46.0
         >>> a = MBF_Float (0, 23, 0xffffff)
@@ -130,15 +128,20 @@ class MBF_Float:
             return self
         exdif = abs (self.exp - other.exp)
         a, b  = (self, other) if self._abs > other._abs else (other, self)
-        if exdif > 23 or a.sign == b.sign and exdif > 22:
+        # The Basic implementation drops the last bit on subtract, so it
+        # can never remove the last bit by subtraction
+        #if exdif > 23 or a.sign == b.sign and exdif > 22:
+        if exdif > 22:
             return a
         s  = a.sign
         bm = b.mnt >> exdif
         if a.sign == b.sign:
-            am = a.mnt >> 1
-            bm = bm >> 1
-            ex = a.exp + 1
+            am = a.mnt
+            ex = a.exp
             mn = am + bm
+            if mn > 0xffffff:
+                mn >>= 1
+                ex += 1
         else:
             am = a.mnt
             mn = am - bm

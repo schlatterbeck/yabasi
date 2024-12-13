@@ -26,11 +26,13 @@
 import re
 import os
 import sys
+import pytest
 import inspect
 import doctest
 import yabasi
 from textwrap import dedent
 from yabasi.bas import Interpreter, options, Interpreter_Test
+from yabasi.mbf import MBF_Float
 try:
     import asm
 except ImportError:
@@ -310,6 +312,63 @@ class Test_Base (_Test_Common):
     # end def test_input
 
 # end class Test_Base
+
+@pytest.mark.skipif (asm is None, reason = 'Need unicorn, keystone, capstone')
+class Test_MBF:
+
+    def test_int_to_float (self):
+        """ This only tests integer to single-precision float conversion
+            of the GWBasic_Math class used for testing.
+        """
+        m = asm.GWBasic_Math (verbose = 0, debug = 0)
+        r = m.int_to_float (0x4711)
+        assert r.as_float () == 18193.0
+        r = m.int_to_float (0x7fff)
+        assert r.as_float () == 32767.0
+    # end def test_int_to_float
+
+    def test_add (self):
+        m = asm.GWBasic_Math (verbose = 0, debug = 0)
+        a = MBF_Float (0, 23, 0xffffff)
+        b = MBF_Float.from_float (1.0)
+        assert a.as_float () == 16777215.0
+        assert (a + b).as_float () == 16777215.0
+        assert m.add (a, b).as_float () == 16777215.0
+        b = MBF_Float.from_float (2.0)
+        assert (a + b).as_float () == 16777216.0
+        assert m.add (a, b).as_float () == 16777216.0
+        b = MBF_Float.from_float (-1.0)
+        assert (a + b).as_float () == 16777215.0
+        assert m.add (a, b).as_float () == 16777215.0
+        b = MBF_Float.from_float (-2.0)
+        assert (a + b).as_float () == 16777213.0
+        assert (b + a).as_float () == 16777213.0
+        assert m.add (a, b).as_float () == 16777213.0
+        assert m.add (b, a).as_float () == 16777213.0
+        b = MBF_Float.from_float (-16777215.0)
+        assert b.as_float () == -16777215.0
+        assert (a + b).as_float () == 0.0
+        assert m.add (a, b).as_float () == 0.0
+        b = MBF_Float.from_float (-16777214.0)
+        assert (a + b).as_float () == 1.0
+        assert m.add (a, b).as_float () == 1.0
+        assert (a + a).as_float () == 33554430.0
+        assert m.add (a, a).as_float () == 33554430.0
+        a = MBF_Float.from_float (3.0)
+        b = MBF_Float.from_float (-2.0)
+        assert (a + b).as_float () == 1.0
+        assert m.add (a, b).as_float () == 1.0
+    # end def test_add
+
+    def test_mul (self):
+        m = asm.GWBasic_Math (verbose = 0, debug = 0)
+        #a = MBF_Float (0, 23, 0xffffff)
+        #b = MBF_Float.from_float (-1.0)
+        #assert (a * b).as_float () == -16777215.0
+        #assert m.mul (a, b).as_float == -16777215.0
+    # end def test_mul
+
+# end class Test_MBF
 
 class Test_Graphics (_Test_Common):
 

@@ -116,7 +116,8 @@ TSTEVN: POPF			;IF ZF=1 MUST CLEAR LOW BIT OF DL
 PAKSP:				;PAK SINGLE PRECISION FAC. EXPONENT IS IN FAC,SIGN IN FAC+1
 				;THE MANTISSA IS IN (BLDX)
 	MOV	SI,FAC	;LOAD ADDRESS OF FAC IN SI
-	MOV	WORD PTR 1[SI],DX	;MOVE LOWER MANTISSA WORD IN
+        XCHG    DL,DH
+	MOV	WORD PTR 2[SI],DX	;MOVE LOWER MANTISSA WORD IN
 	MOV	BH,BYTE PTR [FAC+1]	;FETCH SIGN
 	AND	BX,0x807f	;CLEAR ALL BUT SIGN IN BH SIGN IN BL
 	OR	BL,BH		;(BL) NOW IN CORRECT FORMAT
@@ -318,6 +319,9 @@ $FADDS:                 ;($FAC)=(BXDX)+($FAC)
 
         XOR     CX,CX           ;(CX)=0
         MOV     SI,WORD PTR [FACLO]    ;(SI)=($FAC-2,$FACLO)
+        XCHG    AX,SI                  ; SI is wrong byte order, fix
+        XCHG    AL,AH
+        XCHG    AX,SI
         MOV     BYTE PTR [FAC+1],AL      ;ASSUME SIGN OF $FAC
         MOV     CL,AH           ;SINCE ASSUME $FAC LARGER
         SUB     CL,BH           ;CL WILL HOLD SHIFT COUNT
@@ -346,7 +350,7 @@ FA20:                           ;***********************************************
         MOV     BH,AH           ;(AH)=(BH)=0
 FA22:   OR      CX,CX           ;ZF=1 IF EXPONENTS THE SAME
         JZ      FA40            ;IF EXPONENTS SAME JUMP
-        CMP     CX,31           ;MUST SEE IF WITHIN 24 BITS
+        CMP     CX,0x25         ;MUST SEE IF WITHIN 24 BITS
         JB      FA23            ;IF SO PROCEED
 ;*************************************************************
 ;THE NUMBERS WE ARE TRYING TO ADD/SUBTRACT ARE OF SUCH DIFFERENCE
@@ -470,7 +474,7 @@ NOR20:  MOV     BYTE PTR [FAC],BH        ;UPDATE EXPONENT
 ;               (FLOATING POINT ) NUMBER AND STORES IT IN THE FAC
 ;               AND SETS $VALTP=4
 ;*****************************************************************
-$LT:   XOR     BX,BX           ;CLEAR HIGH MANTISSA BYTE (BL)
+$FLT:   XOR     BX,BX           ;CLEAR HIGH MANTISSA BYTE (BL)
         XOR     AH,AH           ;CLEAR OVERFLOW BYTE
         MOV     SI,FAC+1        ;FETCH $FAC ADDRESS TO (SI)
         MOV     BYTE PTR [SI-1],0x90 ;SET EXPONENT TO 16
