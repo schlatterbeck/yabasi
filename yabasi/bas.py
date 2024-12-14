@@ -1451,7 +1451,7 @@ class Interpreter:
         self.context = None
     # end def exec_cmdlist
 
-    def fixtype (self, a, b, op):
+    def fixtype_mbf (self, a, b, op):
         """ Fix type to single precision when emulating single precision float
         """
         if isinstance (a, str) or isinstance (b, str):
@@ -1468,7 +1468,15 @@ class Interpreter:
             else:
                 return np.single (op (np.single (a), np.single (b)))
         return op (a, b)
-    # end def fixtype
+    # end def fixtype_mbf
+
+    def fixtype_single (self, a, b, op):
+        if isinstance (a, str) or isinstance (b, str):
+            return op (a, b)
+        if not isinstance (a, float) and not isinstance (b, float):
+            return np.single (op (np.single (a), np.single (b)))
+        return op (a, b)
+    # end def fixtype_single
 
     def insert (self, r):
         k = (self.lineno, self.sublineno)
@@ -2605,29 +2613,46 @@ class Interpreter:
         f3 = p [3]
         if p [2] == '+':
             if self.args.single_precision:
-                def x ():
-                    return self.fixtype (f1 (), f3 (), operator.add)
+                if self.args.emulate_basica_float:
+                    def x ():
+                        return self.fixtype_mbf (f1 (), f3 (), operator.add)
+                else:
+                    def x ():
+                        return self.fixtype_single (f1 (), f3 (), operator.add)
             else:
                 def x ():
                     return f1 () + f3 ()
         elif p [2] == '-':
             if self.args.single_precision:
-                def x ():
-                    return self.fixtype (f1 (), f3 (), operator.sub)
+                if self.args.emulate_basica_float:
+                    def x ():
+                        return self.fixtype_mbf (f1 (), f3 (), operator.sub)
+                else:
+                    def x ():
+                        return self.fixtype_single (f1 (), f3 (), operator.sub)
             else:
                 def x ():
                     return f1 () - f3 ()
         elif p [2] == '*':
             if self.args.single_precision:
-                def x ():
-                    return self.fixtype (f1 (), f3 (), operator.mul)
+                if self.args.emulate_basica_float:
+                    def x ():
+                        return self.fixtype_mbf (f1 (), f3 (), operator.mul)
+                else:
+                    def x ():
+                        return self.fixtype_single (f1 (), f3 (), operator.mul)
             else:
                 def x ():
                     return f1 () * f3 ()
         elif p [2] == '/':
             if self.args.single_precision:
-                def x ():
-                    return self.fixtype (f1 (), f3 (), operator.truediv)
+                op = operator.truediv
+                if self.args.emulate_basica_float:
+                    def x ():
+                        return self.fixtype_mbf (f1 (), f3 (), op)
+                else:
+                    def x ():
+                        return self.fixtype_single (f1 (), f3 (), op)
             else:
                 def x ():
                     return f1 () / f3 ()
@@ -2661,7 +2686,7 @@ class Interpreter:
         elif p [2] == '^':
             if self.args.single_precision:
                 def x ():
-                    return self.fixtype (f1 (), f3 (), operator.pow)
+                    return self.fixtype_single (f1 (), f3 (), operator.pow)
             else:
                 def x ():
                     return f1 () ** f3 ()

@@ -414,6 +414,13 @@ class Test_MBF:
         res2 = MBF_Float.from_float (9.186124e-09)
         assert (v * v) == res2
         assert m.mul (v, v) == res2
+        res3 = MBF_Float.from_float (1.0)
+        a = MBF_Float (0, -15, 0xbe00f5)
+        b = MBF_Float (0,  14, 0xac75b3)
+        assert (a * b) == res3
+        assert (b * a) == res3
+        assert m.mul (a, b) == res3
+        assert m.mul (b, a) == res3
     # end def test_mul
 
 # end class Test_MBF

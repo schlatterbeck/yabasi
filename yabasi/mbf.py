@@ -256,24 +256,25 @@ class MBF_Float:
             return MBF_Float (0, 0, 0)
         s  = self.sign ^ other.sign
         assert s in (0, 1)
-        ex = self.exp + other.exp
+        ex = self.exp + other.exp + 1
         # MBF implementation seems to use an additional byte at bottom
-        m1 = self.mnt << 8
-        r  = 0
-        for b in bin (other.mnt)[2:]:
-            if b == '1':
-                r += m1
-            if m1 == 0:
-                break
-            m1 >>= 1
+        # The result of full multiplication is 47 or 48 bits long.
+        # So we do a 'real' multiplication and shift by 16, check upper
+        # bit and do an additional shift left if necessary (decrementing exp)
+        r  = (self.mnt * other.mnt) >> 16
+        # Check if leftmost bit is set and shift (and dec exponent)
+        if r < (self.ubit << 8):
+            r <<= 1
+            ex -= 1
         # MBF does 'rounding': Add 0x80 to last byte of extended mantissa
         # after removing some unneeded bits at the bottom
         r &= 0xffffffffe0
         r += 0x80
         r >>= 8
-        if r >= 1 << 24:
-            ex += 1
+        # We can have an overflow from this addition
+        if r >= (self.ubit << 1):
             r >>= 1
+            ex += 1
         if ex < -126:
             return MBF_Float (0, 0, 0)
         if self.debug:

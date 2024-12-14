@@ -96,7 +96,14 @@ class GWBasic_Math:
         print ('  AX: %04x BX: %04x CX: %04x DX: %04x' % (ax, bx, cx, dx))
         di = self.uc.reg_read (x86_const.UC_X86_REG_DI)
         si = self.uc.reg_read (x86_const.UC_X86_REG_SI)
-        print ('  DI: %04x SI: %04x' % (di, si))
+        bp = self.uc.reg_read (x86_const.UC_X86_REG_BP)
+        print ('  DI: %04x SI: %04x BP: %04x' % (di, si, bp))
+        fl = self.uc.reg_read (x86_const.UC_X86_REG_FLAGS)
+        fl = bin (fl) [2:]
+        fl = '0' * (16 - len (fl)) + fl
+        fl = fl.replace ('', '  ').rstrip ()
+        print ('  U  U  U  U OF DF IF TF SF ZF  U AF  U PF  U CF')
+        print (fl)
     # end def debug_hook
 
     def debug_disassemble (self):
@@ -207,9 +214,9 @@ if __name__ == '__main__':
     #print (r.as_float ())
     #r = m.add (MBF_Float (0, 23, 0xffffff), MBF_Float.from_float (-16777214.0))
     #print (r.as_float ())
-    #a = MBF_Float (0, 23, 0xffffff)
-    #r = m.mul (a, a)
     a = MBF_Float (0, 23, 0xffffff)
-    b = MBF_Float.from_float (-1.0)
-    r = m.add (a, b)
-    print (r.as_float ())
+    r = m.mul (a, a)
+    #a = MBF_Float (0, 23, 0xffffff)
+    #b = MBF_Float.from_float (-1.0)
+    #r = m.add (a, b)
+    #print (r.as_float ())
