@@ -381,46 +381,65 @@ class Test_MBF:
         m = asm.GWBasic_Math (verbose = 0, debug = 0)
         a = MBF_Float (0, 23, 0xffffff)
         b = MBF_Float.from_float (-1.0)
-        assert (a * b).as_float () == -16777215.0
         assert m.mul (a, b).as_float () == -16777215.0
-        assert (b * a).as_float () == -16777215.0
         assert m.mul (b, a).as_float () == -16777215.0
-        assert (a * a) == MBF_Float (0, 47, 0xfffffe)
+        assert (a * b).as_float () == -16777215.0
+        assert (b * a).as_float () == -16777215.0
         assert m.mul (a, a) == MBF_Float (0, 47, 0xfffffe)
+        assert (a * a) == MBF_Float (0, 47, 0xfffffe)
         a = MBF_Float.from_float (9.0)
         b = MBF_Float.from_float (1.0) / 3
-        assert (a * b) == MBF_Float.from_float (3.0)
-        assert (b * a) == MBF_Float.from_float (3.0)
         assert m.mul (a, b) == MBF_Float.from_float (3.0)
         assert m.mul (b, a) == MBF_Float.from_float (3.0)
+        assert (a * b) == MBF_Float.from_float (3.0)
+        assert (b * a) == MBF_Float.from_float (3.0)
         a = MBF_Float.from_float (0.00007)
         b = MBF_Float.from_float (8.)
-        assert (a * b) == MBF_Float.from_float (0.00056)
-        assert (b * a) == MBF_Float.from_float (0.00056)
         assert m.mul (a, b) == MBF_Float.from_float (0.00056)
         assert m.mul (b, a) == MBF_Float.from_float (0.00056)
+        assert (a * b) == MBF_Float.from_float (0.00056)
+        assert (b * a) == MBF_Float.from_float (0.00056)
         zero = MBF_Float (0, 0, 0)
-        assert (a * zero) == zero
-        assert (zero * a) == zero
         assert m.mul (a, zero) == zero
         assert m.mul (zero, a) == zero
+        assert (a * zero) == zero
+        assert (zero * a) == zero
         c = MBF_Float (0, 23, 0xffffff)
         res = MBF_Float (0, 47, 0xfffffe)
-        assert (c * c) == res
         assert m.mul (c, c) == res
-        assert (c * c).as_float () == res.as_float ()
         assert m.mul (c, c).as_float () == res.as_float ()
+        assert (c * c) == res
+        assert (c * c).as_float () == res.as_float ()
         v = MBF_Float.from_float (9.584426879882812e-05)
         res2 = MBF_Float.from_float (9.186124e-09)
-        assert (v * v) == res2
         assert m.mul (v, v) == res2
+        assert (v * v) == res2
         res3 = MBF_Float.from_float (1.0)
         a = MBF_Float (0, -15, 0xbe00f5)
         b = MBF_Float (0,  14, 0xac75b3)
-        assert (a * b) == res3
-        assert (b * a) == res3
         assert m.mul (a, b) == res3
         assert m.mul (b, a) == res3
+        assert (a * b) == res3
+        assert (b * a) == res3
+        r = MBF_Float (0, -2, 0xa2e8ba)
+        a = MBF_Float (0, 2, 0xe00000)
+        b = MBF_Float (0, -5, 0xba2e8c)
+        assert m.mul (a, b) == r
+        assert m.mul (b, a) == r
+        assert a.multiply (b) == r
+        assert b.multiply (a) == r
+        # This is a case that computes a result different from single
+        # precision: -0.6548728 vs. -0.65487283
+        r = MBF_Float (1,  -1, 0xa7a5be)
+        a = MBF_Float (1, -16, 0xf8db48)
+        b = MBF_Float (0,  14, 0xac75b3)
+        assert m.mul (a, b) == r
+        assert m.mul (b, a) == r
+        assert a.multiply (b) == r
+        assert b.multiply (a) == r
+        assert r == MBF_Float.from_float (-0.6548728)
+        v = a.as_float () * b.as_float ()
+        assert MBF_Float.from_float (v) == MBF_Float (1,  -1, 0xa7a5bf)
     # end def test_mul
 
 # end class Test_MBF

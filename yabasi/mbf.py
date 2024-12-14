@@ -33,7 +33,7 @@ class MBF_Float:
         See https://en.wikipedia.org/wiki/Microsoft_Binary_Format
     """
 
-    debug = True
+    debug = False
     ubit = 1 << 23
 
     def __init__ (self, sign, exponent, mantissa):
@@ -163,6 +163,7 @@ class MBF_Float:
             b = other.as_float ()
             v = a + b
             if abs (v - MBF_Float (s, ex, mn).as_float ()) / v >= 0.01:
+            #if v != MBF_Float (s, ex, mn).as_float ():
                 import pdb; pdb.set_trace ()
         return MBF_Float (s, ex, mn)
     # end def add
@@ -269,8 +270,15 @@ class MBF_Float:
         # MBF does 'rounding': Add 0x80 to last byte of extended mantissa
         # after removing some unneeded bits at the bottom
         r &= 0xffffffffe0
+        l =  r & 0xf0
         r += 0x80
         r >>= 8
+        # This is the "want to round to even number" case where the
+        # low-byte (after removing lower bits) was 0x80.
+        # In that case we want an even number (cancelling the rounding
+        # above unless there was a carry)
+        if l == 0x80 and (r & 1):
+            r -= 1
         # We can have an overflow from this addition
         if r >= (self.ubit << 1):
             r >>= 1
@@ -281,7 +289,8 @@ class MBF_Float:
             a = self.as_float ()
             b = other.as_float ()
             v = a * b
-            if abs (v - MBF_Float (s, ex, r).as_float ()) / v >= 0.01:
+            #if abs (v - MBF_Float (s, ex, r).as_float ()) / v >= 0.01:
+            if v != MBF_Float (s, ex, r).as_float ():
                 import pdb; pdb.set_trace ()
         return MBF_Float (s, ex, r)
     # end def multiply
