@@ -316,6 +316,16 @@ class Test_Base (_Test_Common):
 @pytest.mark.skipif (asm is None, reason = 'Need unicorn, keystone, capstone')
 class Test_MBF:
 
+    def t_add (self, s1, e1, m1, s2, e2, m2, sr, er, mr):
+        a = MBF_Float (s1, e1, m1)
+        b = MBF_Float (s2, e2, m2)
+        r = MBF_Float (sr, er, mr)
+        assert self.m.add (a, b) == r
+        assert self.m.add (b, a) == r
+        assert (a.add (b) == r)
+        assert (b.add (a) == r)
+    # end def t_add
+
     def test_int_to_float (self):
         """ This only tests integer to single-precision float conversion
             of the GWBasic_Math class used for testing.
@@ -330,7 +340,7 @@ class Test_MBF:
     # end def test_int_to_float
 
     def test_add (self):
-        m = asm.GWBasic_Math (verbose = 0, debug = 0)
+        m = self.m = asm.GWBasic_Math (verbose = 0, debug = 0)
         a = MBF_Float (0, 23, 0xffffff)
         b = MBF_Float.from_float (1.0)
         assert a.as_float () == 16777215.0
@@ -375,6 +385,18 @@ class Test_MBF:
         assert (b + a).as_float () == -0.5
         assert m.add (a, b).as_float () == -0.5
         assert m.add (b, a).as_float () == -0.5
+        self.t_add (0, -14, 0xda92d5, 1, -13, 0x8c64d3, 1, -16, 0xf8db44)
+        self.t_add (0, -30, 0xc7990b, 0, -31, 0xa4dfcd, 0, -29, 0x8d0479)
+        self.t_add (0, -12, 0xa34950, 0, -16, 0xe13e09, 0, -12, 0xb15d31)
+        self.t_add (0, -14, 0xec5727, 1, -22, 0xede04f, 0, -14, 0xeb6946)
+        self.t_add (0, -14, 0xdef51d, 1, -20, 0xb50092, 0, -14, 0xdc211a)
+        self.t_add (0, -25, 0xf64c4d, 0, -29, 0xf781c3, 0, -24, 0x82e234)
+        self.t_add (0, -14, 0xcd3af8, 1, -18, 0xf2c235, 0, -14, 0xbe0ed4)
+        self.t_add (0, -15, 0xf4a130, 1, -19, 0xf2c235, 0, -15, 0xe5750c)
+        self.t_add (1, -17, 0xce53cd, 0, -29, 0xb6e62e, 1, -17, 0xce485e)
+        self.t_add (1, -12, 0xa0203e, 0, -19, 0x856fb7, 1, -12, 0x9f155e)
+        self.t_add (1, -12, 0x9b3163, 0, -17, 0xf8fecb, 1, -12, 0x93696c)
+        self.t_add (1, -12, 0x964288, 0, -19, 0xd25bb4, 1, -12, 0x949dd0)
     # end def test_add
 
     def test_mul (self):

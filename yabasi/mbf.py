@@ -33,7 +33,7 @@ class MBF_Float:
         See https://en.wikipedia.org/wiki/Microsoft_Binary_Format
     """
 
-    debug = False
+    debug = True
     ubit = 1 << 23
 
     def __init__ (self, sign, exponent, mantissa):
@@ -139,31 +139,45 @@ class MBF_Float:
         if exdif > 23:
             return a
         s  = a.sign
-        bm = b.mnt >> exdif
+        bm = (b.mnt << 8) >> exdif
+        # When shifting the asm code keeps track of bit 0x10 right from
+        # the bit 0x20 one byte right of the larger number (called the
+        # *sticky* bit because it is kept during the whole shift, once
+        # set). If this is set, bit 0x20 is set (and again set for the
+        # next shift because 0x20 will have been shifted to 0x10).
+        # Even with this algorithm we sometimes have a difference of one
+        # bit between MBF and single precision (confirmed by the
+        # assembler code).
+        mask = 0
+        if exdif >= 3:
+            mask = (1 << (exdif - 2)) - 1
+        if b.mnt & mask:
+            bm |= 0x20
         if a.sign == b.sign:
-            am = a.mnt
+            am = a.mnt << 8
             ex = a.exp
             mn = am + bm
-            if mn > 0xffffff:
+            if mn >= self.ubit << 8:
                 mn >>= 1
                 ex += 1
         else:
-            am = a.mnt
+            am = a.mnt << 8
             mn = am - bm
             ex = a.exp
         if mn == 0:
             return MBF_Float (0, 0, 0)
-        while (mn & self.ubit) == 0:
+        while (mn & (self.ubit << 8)) == 0:
             mn <<= 1
             ex -= 1
+        mn, ex = self.round (mn, ex)
         if ex < -126:
             return MBF_Float (0, 0, 0)
         if self.debug:
-            a = self.as_float ()
-            b = other.as_float ()
-            v = a + b
-            if abs (v - MBF_Float (s, ex, mn).as_float ()) / v >= 0.01:
-            #if v != MBF_Float (s, ex, mn).as_float ():
+            aa = self.as_float ()
+            bb = other.as_float ()
+            v  = MBF_Float.from_float (aa + bb)
+            rv = MBF_Float (s, ex, mn)
+            if v != rv and abs (v.mnt - rv.mnt) > 1:
                 import pdb; pdb.set_trace ()
         return MBF_Float (s, ex, mn)
     # end def add
@@ -267,8 +281,38 @@ class MBF_Float:
         if r < (self.ubit << 8):
             r <<= 1
             ex -= 1
-        # MBF does 'rounding': Add 0x80 to last byte of extended mantissa
-        # after removing some unneeded bits at the bottom
+        r, ex = self.round (r, ex)
+        if ex < -126:
+            return MBF_Float (0, 0, 0)
+        if self.debug:
+            a  = self.as_float ()
+            b  = other.as_float ()
+            v  = MBF_Float.from_float (a * b)
+            rv = MBF_Float (s, ex, r)
+            if v != rv and abs (v.mnt - rv.mnt) > 1:
+                import pdb; pdb.set_trace ()
+        return MBF_Float (s, ex, r)
+    # end def multiply
+    __mul__ = multiply
+
+    def round (self, r, ex):
+        """ MBF does 'rounding': The given 'r' is an extended mantissa,
+            a 32 bit number. It has three bits after the mantissa, 0x80
+            is the guard bit, 0x40 the round bit, and 0x20 the sticky
+            bit (see above in 'add' the comment on shifting).  If the
+            guard bit isn't set the number stays the same. If guard-bit
+            and at least one of sticky and round bit is set, the number
+            is roundup up (add 1 to mantissa). If only the guard bit is
+            set, the number is rounded up if it becomes even with this
+            operation.
+        """
+
+        Add 0x80 to last byte of extended mantissa
+            after removing some unneeded bits at the bottom. The
+            extended mantissa in r is extended to 32 bit. We may need to
+            shift and correct the exponent.
+        """
+        # Remove bits at the bottom
         r &= 0xffffffffe0
         l =  r & 0xf0
         r += 0x80
@@ -283,18 +327,8 @@ class MBF_Float:
         if r >= (self.ubit << 1):
             r >>= 1
             ex += 1
-        if ex < -126:
-            return MBF_Float (0, 0, 0)
-        if self.debug:
-            a = self.as_float ()
-            b = other.as_float ()
-            v = a * b
-            #if abs (v - MBF_Float (s, ex, r).as_float ()) / v >= 0.01:
-            if v != MBF_Float (s, ex, r).as_float ():
-                import pdb; pdb.set_trace ()
-        return MBF_Float (s, ex, r)
-    # end def multiply
-    __mul__ = multiply
+        return r, ex
+    # end def round
 
     def __truediv__ (self, other):
         """ Convenience method for division
