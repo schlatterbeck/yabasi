@@ -1387,7 +1387,7 @@ class Interpreter:
             self.ofile = None
     # end def close_output
 
-    def compile (self, f):
+    def compile_lines (self, f):
         lineno = self.lineno = sublineno = 0
         for fline, l in enumerate (f):
             l = l.rstrip ()
@@ -1422,6 +1422,11 @@ class Interpreter:
             self.tokenizer.feed (r)
             r = self.parser.parse (lexer = self.tokenizer, debug = self.log)
             self.insert (r)
+    # end def compile_lines
+
+    def compile (self, f):
+        self.compile_lines (f)
+        self.compile_lines (self.args.patch)
         self.nextline = {}
         self.first    = None
         prev = None
@@ -3444,6 +3449,14 @@ def options (argv):
         ( '--print-version'
         , help    = 'Print version number and exit'
         , action  = 'store_true'
+        )
+    cmd.add_argument \
+        ( '-p', '--patch'
+        , help    = 'Add a line to the end of the basic file, possibly'
+                    ' replacing an existing line, can be specified'
+                    ' multiple times'
+        , action  = 'append'
+        , default = []
         )
     cmd.add_argument \
         ( '-S', '--screen'
