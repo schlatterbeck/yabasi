@@ -184,7 +184,7 @@ class Tokenizer:
     # end def t_FNFUNCTION
 
     def t_HEXNUMBER (self, t):
-        r'&h[0-9A-Fa-f]+'
+        r'&[hH][0-9A-Fa-f]+'
         v = int (t.value [2:], 16)
         t.value = (v, int)
         return t

@@ -109,6 +109,15 @@ class Test_Base (_Test_Common):
         self.run_test ('True\nFalse\nTrue\n')
     # end def test_eof
 
+    def test_hex (self):
+        """
+            10 PRINT &HFF
+            20 PRINT &h42
+        """
+        ret = '255\n66\n'
+        self.run_test (ret)
+    # end def test_hex
+
     def test_multigosub (self):
         """
             10  REM HUHU
