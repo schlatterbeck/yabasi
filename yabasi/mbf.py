@@ -305,9 +305,8 @@ class MBF_Float:
             is roundup up (add 1 to mantissa). If only the guard bit is
             set, the number is rounded up if it becomes even with this
             operation.
-        """
 
-        Add 0x80 to last byte of extended mantissa
+            Add 0x80 to last byte of extended mantissa
             after removing some unneeded bits at the bottom. The
             extended mantissa in r is extended to 32 bit. We may need to
             shift and correct the exponent.
